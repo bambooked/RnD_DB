@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(grep:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv run pytest /Users/take/others/muds_hackson/muds_hackson_back/agent/tests/ --collect-only)",
+      "Bash(uv run:*)",
+      "Bash(uv run:*)",
+      "Bash(uv run:*)",
+      "Bash(python test_paas_integration_instanceD.py)",
+      "Bash(uv run:*)",
+      "Bash(uv run:*)",
+      "Bash(rg:*)",
+      "Bash(python test_instanceD_complete_validation.py)",
+      "Bash(grep:*)",
+      "Bash(grep:*)",
+      "Bash(mv:*)",
+      "Bash(chmod:*)",
+      "Bash(uv add:*)",
+      "Bash(timeout 10 uv run:*)",
+      "Bash(true)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(git rm:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(python:*)"
+    ],
+    "deny": []
+  }
+}

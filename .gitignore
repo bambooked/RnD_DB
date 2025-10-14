@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+data/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+.coverage
+
+
+
+# claude
+CLAUDE.md
+claude.md
+
+# Google Drive認証情報（機密情報）
+google_drive_credentials.json
+google_drive_credentials_token.json
+
+
+client_secret.json
