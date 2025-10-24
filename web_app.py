@@ -25,11 +25,17 @@ load_dotenv()
 from agent.source.integrations.google_drive import GoogleDriveIntegration
 from agent.source.integrations.auth import AuthenticationManager
 from agent.source.database.connection import db_connection
-from agent.source.database.new_repository import DatasetRepository, PaperRepository, PosterRepository
-from agent.source.database.new_models import Dataset, Paper, Poster
+from agent.source.database.new_repository import (
+    DatasetRepository, PaperRepository, PosterRepository,
+    PaperDatasetRelationRepository, PosterDatasetRelationRepository,
+    DatasetFileRepository
+)
+from agent.source.database.new_models import PaperDatasetRelation, PosterDatasetRelation
+from agent.source.database.new_models import Dataset, Paper, Poster, DatasetFile
 from agent.source.advisor.enhanced_research_advisor import EnhancedResearchAdvisor
 from agent.source.advisor.dataset_advisor import DatasetAdvisor
 from agent.source.integrations.looker_export import LookerDataExporter
+from agent.source.analyzer.gemini_client import GeminiClient
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)
@@ -54,11 +60,15 @@ auth_manager = AuthenticationManager()
 enhanced_advisor = EnhancedResearchAdvisor()
 dataset_advisor = DatasetAdvisor()
 looker_exporter = LookerDataExporter(google_drive)
+gemini_client = GeminiClient()
 
 # リポジトリ
 dataset_repo = DatasetRepository()
 paper_repo = PaperRepository()
 poster_repo = PosterRepository()
+paper_dataset_rel_repo = PaperDatasetRelationRepository()
+poster_dataset_rel_repo = PosterDatasetRelationRepository()
+dataset_file_repo = DatasetFileRepository()
 
 # リクエスト/レスポンスモデル
 class GoogleDriveSyncRequest(BaseModel):
@@ -182,29 +192,45 @@ async def perform_google_drive_sync(folder_type: str):
     """Google Drive同期の実際の処理"""
     try:
         logger.info(f"Google Drive同期開始: {folder_type}")
-        
+
         # フォルダ内のファイルを取得
         folders = google_drive.list_files()
         files_processed = 0
         errors = []
-        
+
+        # フェーズ1: データセットを先に処理（cited_datasetsの参照先を作成）
+        logger.info("Phase 1: データセットの処理開始")
         for folder in folders:
             if folder.get('mimeType') == 'application/vnd.google-apps.folder':
                 folder_name = folder['name']
                 folder_id = folder['id']
-                
+
                 # フォルダタイプでフィルタ
                 if folder_type != "all" and folder_name not in [folder_type, f"{folder_type}s"]:
                     continue
-                
-                # フォルダ内のファイルを処理
-                files_in_folder = google_drive.list_files(folder_id=folder_id)
-                
+
                 if folder_name == 'datasets':
+                    # フォルダ内のファイルを処理
+                    files_in_folder = google_drive.list_files(folder_id=folder_id)
                     # datasetsフォルダの場合、サブフォルダを処理
                     dataset_files_count = await process_datasets_folder(files_in_folder)
                     files_processed += dataset_files_count
-                else:
+
+        # フェーズ2: 論文・ポスターを処理（cited_datasetsの関連を作成）
+        logger.info("Phase 2: 論文・ポスターの処理開始")
+        for folder in folders:
+            if folder.get('mimeType') == 'application/vnd.google-apps.folder':
+                folder_name = folder['name']
+                folder_id = folder['id']
+
+                # フォルダタイプでフィルタ
+                if folder_type != "all" and folder_name not in [folder_type, f"{folder_type}s"]:
+                    continue
+
+                # フォルダ内のファイルを処理
+                files_in_folder = google_drive.list_files(folder_id=folder_id)
+
+                if folder_name != 'datasets':
                     # 通常のフォルダ（paper, poster）の場合
                     for file in files_in_folder:
                         if file.get('mimeType') != 'application/vnd.google-apps.folder':
@@ -262,13 +288,67 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]]) -> int:
                     dataset_file_list.append(file_info)
                     total_size += file_info['size']
                     files_processed += 1
+
+                    # CSV/JSONファイルの場合は解析を実行
+                    extension = file_info['name'].split('.')[-1].lower() if '.' in file_info['name'] else ''
+                    if extension in ['csv', 'json', 'jsonl']:
+                        logger.info(f"データセットファイル解析開始: {file_info['name']}")
+                        file_analysis = await analyze_dataset_file(file_info['id'], file_info['name'], extension)
+
+                        # DatasetFileレコードを作成または更新
+                        if existing_dataset:
+                            file_path = f"gdrive://dataset/{dataset_name}/{file_info['id']}"
+                            existing_file = dataset_file_repo.find_by_path(file_path)
+
+                            if existing_file:
+                                # 既存ファイルの更新
+                                if file_analysis['schema_info']:
+                                    # スキーマ情報を更新（完全置換ではなくマージする場合はロジックを変更）
+                                    existing_file.schema_info = file_analysis['schema_info']
+                                    existing_file.summary = file_analysis['summary']
+                                    dataset_file_repo.update(existing_file)
+                                    logger.info(f"データセットファイル情報更新: {file_info['name']}")
+                            else:
+                                # 新規ファイル登録
+                                dataset_file = DatasetFile(
+                                    dataset_id=existing_dataset.id,
+                                    file_path=file_path,
+                                    file_name=file_info['name'],
+                                    file_type=extension,
+                                    file_size=file_info['size'],
+                                    schema_info=file_analysis['schema_info'],
+                                    summary=file_analysis['summary']
+                                )
+                                dataset_file_repo.create(dataset_file)
+                                logger.info(f"データセットファイル登録: {file_info['name']}")
             
             if dataset_file_list:
+                # データセット解説を生成
+                dataset_description = None
+                if len(dataset_file_list) > 0:
+                    logger.info(f"データセット解説生成開始: {dataset_name}")
+                    dataset_description = gemini_client.generate_dataset_description(
+                        dataset_name,
+                        [{'name': f['name'], 'type': f['mime_type'], 'size': f['size']} for f in dataset_file_list]
+                    )
+
                 if existing_dataset:
                     # 既存データセットの更新
+                    needs_update = False
+
+                    # ファイル数やサイズが変わった場合
                     if existing_dataset.file_count != len(dataset_file_list) or existing_dataset.total_size != total_size:
                         existing_dataset.file_count = len(dataset_file_list)
                         existing_dataset.total_size = total_size
+                        needs_update = True
+
+                    # 解説が無い場合は追加
+                    if dataset_description and not existing_dataset.summary:
+                        existing_dataset.summary = dataset_description
+                        needs_update = True
+                        logger.info(f"データセット解説を追加: {dataset_name}")
+
+                    if needs_update:
                         dataset_repo.update(existing_dataset)
                         logger.info(f"データセット更新: {dataset_name} ({len(dataset_file_list)}ファイル)")
                 else:
@@ -277,12 +357,245 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]]) -> int:
                         name=dataset_name,
                         description=f"Google Driveから同期: {len(dataset_file_list)}ファイル",
                         file_count=len(dataset_file_list),
-                        total_size=total_size
+                        total_size=total_size,
+                        summary=dataset_description if dataset_description else None
                     )
                     dataset_repo.create(new_dataset)
                     logger.info(f"データセット新規作成: {dataset_name} ({len(dataset_file_list)}ファイル)")
     
     return files_processed
+
+async def analyze_dataset_file(file_id: str, file_name: str, file_type: str) -> Dict[str, Any]:
+    """データセットファイル（CSV/JSON）をダウンロードして解析"""
+    try:
+        import tempfile
+        import pandas as pd
+        import json
+
+        # ファイル拡張子からタイプを判定
+        extension = file_name.split('.')[-1].lower() if '.' in file_name else ''
+
+        # 一時ファイルを作成
+        with tempfile.NamedTemporaryFile(suffix=f'.{extension}', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        # Google Driveからファイルをダウンロード
+        if not google_drive.download_file(file_id, tmp_path):
+            logger.error(f"ファイルダウンロード失敗: {file_name}")
+            return {'schema_info': None, 'summary': ''}
+
+        try:
+            schema_info = {}
+            summary = ''
+
+            if extension == 'csv':
+                # CSVファイルの解析
+                df = pd.read_csv(tmp_path, nrows=100)  # 最初の100行のみ読み込み
+                schema_info = {
+                    'columns': list(df.columns),
+                    'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()},
+                    'row_count_sample': len(df),
+                    'null_counts': df.isnull().sum().to_dict()
+                }
+
+                # Gemini APIでサマリーを生成
+                content_preview = f"Columns: {', '.join(df.columns)}\n\nFirst 10 rows:\n{df.head(10).to_string()}"
+
+                # 簡易的な要約（Gemini APIなしで生成）
+                summary = f"CSV file with {len(df.columns)} columns: {', '.join(list(df.columns)[:5])}"
+                if len(df.columns) > 5:
+                    summary += f" and {len(df.columns) - 5} more"
+
+            elif extension in ['json', 'jsonl']:
+                # JSONファイルの解析
+                if extension == 'jsonl':
+                    with open(tmp_path, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()[:100]
+                        sample_data = [json.loads(line) for line in lines[:5]]
+                        schema_info = {
+                            'format': 'jsonl',
+                            'line_count_sample': len(lines),
+                            'sample_keys': list(sample_data[0].keys()) if sample_data else []
+                        }
+                        content_preview = json.dumps(sample_data, indent=2, ensure_ascii=False)
+                else:
+                    with open(tmp_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            schema_info = {
+                                'format': 'json_array',
+                                'array_length': len(data),
+                                'sample_keys': list(data[0].keys()) if data and isinstance(data[0], dict) else []
+                            }
+                        else:
+                            schema_info = {
+                                'format': 'json_object',
+                                'keys': list(data.keys()) if isinstance(data, dict) else []
+                            }
+                        content_preview = json.dumps(data, indent=2, ensure_ascii=False)[:5000]
+
+                # 簡易的な要約（Gemini APIなしで生成）
+                if schema_info.get('format') == 'jsonl':
+                    summary = f"JSONL file with {schema_info.get('line_count_sample', 0)} lines"
+                    if schema_info.get('sample_keys'):
+                        summary += f", keys: {', '.join(schema_info['sample_keys'][:3])}"
+                elif schema_info.get('format') == 'json_array':
+                    summary = f"JSON array with {schema_info.get('array_length', 0)} items"
+                    if schema_info.get('sample_keys'):
+                        summary += f", keys: {', '.join(schema_info['sample_keys'][:3])}"
+                else:
+                    summary = f"JSON object with keys: {', '.join(schema_info.get('keys', [])[:5])}"
+
+            return {
+                'schema_info': json.dumps(schema_info, ensure_ascii=False),
+                'summary': summary
+            }
+
+        except Exception as e:
+            logger.error(f"ファイル解析エラー: {file_name}, {e}")
+            return {'schema_info': None, 'summary': ''}
+        finally:
+            # 一時ファイルを削除
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+
+    except Exception as e:
+        logger.error(f"データセットファイル処理エラー: {file_name}, {e}")
+        return {'schema_info': None, 'summary': ''}
+
+
+def save_cited_datasets(item_id: int, cited_datasets: List[str], item_type: str = 'paper'):
+    """引用データセットをDBに保存"""
+    try:
+        if not cited_datasets:
+            return
+
+        for dataset_name in cited_datasets:
+            dataset_name_clean = dataset_name.strip()
+
+            # データセットをデータベースから検索（完全一致）
+            dataset = dataset_repo.find_by_name(dataset_name_clean)
+
+            # 完全一致が見つからない場合、部分一致・大文字小文字無視で検索
+            if not dataset:
+                all_datasets = dataset_repo.find_all()
+                dataset_name_lower = dataset_name_clean.lower()
+
+                # 部分一致検索
+                for ds in all_datasets:
+                    if dataset_name_lower in ds.name.lower() or ds.name.lower() in dataset_name_lower:
+                        dataset = ds
+                        logger.info(f"部分一致でデータセット発見: '{dataset_name_clean}' -> '{ds.name}'")
+                        break
+
+            if dataset:
+                # 既存の関連を確認
+                if item_type == 'paper':
+                    existing = paper_dataset_rel_repo.find_by_both_ids(item_id, dataset.id)
+                    if not existing:
+                        relation = PaperDatasetRelation(
+                            paper_id=item_id,
+                            dataset_id=dataset.id,
+                            relation_type='cited',
+                            confidence=0.8,  # Gemini APIからの抽出なので少し低めの信頼度
+                            notes=f'Extracted from PDF content by Gemini API'
+                        )
+                        paper_dataset_rel_repo.create(relation)
+                        logger.info(f"論文-データセット関連を保存: Paper#{item_id} -> {dataset_name}")
+                else:  # poster
+                    existing = poster_dataset_rel_repo.find_by_both_ids(item_id, dataset.id)
+                    if not existing:
+                        relation = PosterDatasetRelation(
+                            poster_id=item_id,
+                            dataset_id=dataset.id,
+                            relation_type='cited',
+                            confidence=0.8,
+                            notes=f'Extracted from PDF content by Gemini API'
+                        )
+                        poster_dataset_rel_repo.create(relation)
+                        logger.info(f"ポスター-データセット関連を保存: Poster#{item_id} -> {dataset_name}")
+            else:
+                logger.warning(f"引用データセットがDB内に見つかりません: {dataset_name}")
+
+    except Exception as e:
+        logger.error(f"cited_datasets保存エラー: {e}")
+
+
+async def analyze_pdf_content(file_id: str, file_name: str) -> Dict[str, Any]:
+    """PDFファイルをダウンロードして内容を解析"""
+    try:
+        import tempfile
+        from pypdf import PdfReader
+
+        # 一時ファイルを作成
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        # Google DriveからPDFをダウンロード
+        if not google_drive.download_file(file_id, tmp_path):
+            logger.error(f"PDFダウンロード失敗: {file_name}")
+            return {'title': file_name.replace('.pdf', ''), 'authors': '', 'abstract': '', 'keywords': '', 'cited_datasets': []}
+
+        # PDFからテキストを抽出
+        try:
+            text_content = []
+            with open(tmp_path, 'rb') as pdf_file:
+                pdf_reader = PdfReader(pdf_file)
+                # 最初の5ページのみ抽出（要約用）
+                for page_num in range(min(5, len(pdf_reader.pages))):
+                    try:
+                        text = pdf_reader.pages[page_num].extract_text()
+                        if text:
+                            text_content.append(text)
+                    except:
+                        pass
+
+            full_text = "\n\n".join(text_content)
+
+            # Gemini APIで解析
+            if full_text.strip():
+                analysis = gemini_client.analyze_paper_metadata(file_name, full_text[:10000])  # 最初の10000文字
+                if analysis and isinstance(analysis, dict):
+                    logger.info(f"PDF解析完了: {file_name}")
+                    # 必須フィールドの確認と補完
+                    analysis.setdefault('title', file_name.replace('.pdf', ''))
+                    analysis.setdefault('authors', '')
+                    analysis.setdefault('abstract', '')
+                    analysis.setdefault('keywords', '')
+                    analysis.setdefault('cited_datasets', [])
+                    return analysis
+                else:
+                    logger.warning(f"PDF解析結果が不正: {file_name}")
+
+        except Exception as e:
+            logger.error(f"PDF解析エラー: {file_name}, {e}")
+        finally:
+            # 一時ファイルを削除
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+
+        # 解析失敗時のデフォルト
+        return {
+            'title': file_name.replace('.pdf', ''),
+            'authors': '',
+            'abstract': '',
+            'keywords': '',
+            'cited_datasets': []
+        }
+
+    except Exception as e:
+        logger.error(f"PDF処理エラー: {file_name}, {e}")
+        return {
+            'title': file_name.replace('.pdf', ''),
+            'authors': '',
+            'abstract': '',
+            'keywords': '',
+            'cited_datasets': []
+        }
 
 async def process_drive_file(file: Dict[str, Any], folder_name: str):
     """個別ファイルの処理"""
@@ -294,62 +607,114 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str):
         'modified_time': file.get('modifiedTime', ''),
         'mime_type': file.get('mimeType', '')
     }
-    
+
     try:
         if folder_name == 'paper':
             # Google Drive IDをfile_pathとして使用
             drive_file_path = f"gdrive://paper/{file_info['id']}"
-            
+
             # 既存確認（file_pathで重複チェック）
             existing_papers = paper_repo.find_all()
-            if any(p.file_path == drive_file_path for p in existing_papers):
-                logger.info(f"論文スキップ（既存）: {file_info['name']}")
+            existing_paper = next((p for p in existing_papers if p.file_path == drive_file_path), None)
+
+            # PDFファイルの場合は内容を解析
+            metadata = {'title': file_info["name"].replace('.pdf', ''), 'authors': '', 'abstract': '', 'keywords': '', 'cited_datasets': []}
+            if file_info['name'].lower().endswith('.pdf'):
+                logger.info(f"PDF解析開始: {file_info['name']}")
+                metadata = await analyze_pdf_content(file_info['id'], file_info['name'])
+
+            if existing_paper:
+                # 既存の論文を更新
+                existing_paper.title = metadata.get('title', existing_paper.title)
+                existing_paper.authors = metadata.get('authors', existing_paper.authors)
+                existing_paper.abstract = metadata.get('abstract', existing_paper.abstract)
+                existing_paper.keywords = metadata.get('keywords', existing_paper.keywords)
+                paper_repo.update(existing_paper)
+
+                # cited_datasetsを保存
+                cited_datasets = metadata.get('cited_datasets', [])
+                if cited_datasets:
+                    save_cited_datasets(existing_paper.id, cited_datasets, 'paper')
+
+                logger.info(f"論文情報更新: {file_info['name']}")
                 return
-            
+
             # ファイル名での重複チェック（フォールバック）
             if any(p.file_name == file_info["name"] for p in existing_papers):
                 logger.info(f"論文スキップ（同名ファイル）: {file_info['name']}")
                 return
-            
+
             # 論文として登録
             paper = Paper(
                 file_path=drive_file_path,
                 file_name=file_info["name"],
-                title=file_info["name"].replace('.pdf', ''),
-                authors='Google Drive File',
-                abstract='Google Driveから取得されたファイル',
-                keywords='',
+                title=metadata.get('title', file_info["name"].replace('.pdf', '')),
+                authors=metadata.get('authors', ''),
+                abstract=metadata.get('abstract', ''),
+                keywords=metadata.get('keywords', ''),
                 file_size=int(file_info.get('size', 0))
             )
             paper_repo.create(paper)
+
+            # cited_datasetsを保存
+            cited_datasets = metadata.get('cited_datasets', [])
+            if cited_datasets:
+                save_cited_datasets(paper.id, cited_datasets, 'paper')
+
             logger.info(f"論文登録完了: {file_info['name']}")
             
         elif folder_name == 'poster':
             # Google Drive IDをfile_pathとして使用
             drive_file_path = f"gdrive://poster/{file_info['id']}"
-            
+
             # 既存確認（file_pathで重複チェック）
             existing_posters = poster_repo.find_all()
-            if any(p.file_path == drive_file_path for p in existing_posters):
-                logger.info(f"ポスタースキップ（既存）: {file_info['name']}")
+            existing_poster = next((p for p in existing_posters if p.file_path == drive_file_path), None)
+
+            # PDFファイルの場合は内容を解析
+            metadata = {'title': file_info["name"].replace('.pdf', ''), 'authors': '', 'abstract': '', 'keywords': '', 'cited_datasets': []}
+            if file_info['name'].lower().endswith('.pdf'):
+                logger.info(f"ポスターPDF解析開始: {file_info['name']}")
+                metadata = await analyze_pdf_content(file_info['id'], file_info['name'])
+
+            if existing_poster:
+                # 既存のポスターを更新
+                existing_poster.title = metadata.get('title', existing_poster.title)
+                existing_poster.authors = metadata.get('authors', existing_poster.authors)
+                existing_poster.abstract = metadata.get('abstract', existing_poster.abstract)
+                existing_poster.keywords = metadata.get('keywords', existing_poster.keywords)
+                poster_repo.update(existing_poster)
+
+                # cited_datasetsを保存
+                cited_datasets = metadata.get('cited_datasets', [])
+                if cited_datasets:
+                    save_cited_datasets(existing_poster.id, cited_datasets, 'poster')
+
+                logger.info(f"ポスター情報更新: {file_info['name']}")
                 return
-            
+
             # ファイル名での重複チェック（フォールバック）
             if any(p.file_name == file_info["name"] for p in existing_posters):
                 logger.info(f"ポスタースキップ（同名ファイル）: {file_info['name']}")
                 return
-            
+
             # ポスターとして登録
             poster = Poster(
                 file_path=drive_file_path,
                 file_name=file_info["name"],
-                title=file_info["name"].replace('.pdf', ''),
-                authors='Google Drive File',
-                abstract='Google Driveから取得されたファイル',
-                keywords='',
+                title=metadata.get('title', file_info["name"].replace('.pdf', '')),
+                authors=metadata.get('authors', ''),
+                abstract=metadata.get('abstract', ''),
+                keywords=metadata.get('keywords', ''),
                 file_size=int(file_info.get('size', 0))
             )
             poster_repo.create(poster)
+
+            # cited_datasetsを保存
+            cited_datasets = metadata.get('cited_datasets', [])
+            if cited_datasets:
+                save_cited_datasets(poster.id, cited_datasets, 'poster')
+
             logger.info(f"ポスター登録完了: {file_info['name']}")
             
         elif folder_name == 'datasets':
@@ -452,50 +817,98 @@ async def research_consultation(request: ResearchConsultationRequest):
 async def get_database_summary():
     """データベースの詳細な要約情報を取得"""
     try:
-        # 論文情報
+        # 論文情報（引用データセット含む）
         papers = paper_repo.find_all()
-        papers_summary = [
-            {
+        papers_summary = []
+        for p in papers:
+            # 引用データセット情報を取得
+            cited_datasets = []
+            rels = paper_dataset_rel_repo.find_by_paper_id(p.id)
+            for rel in rels:
+                ds = dataset_repo.find_by_id(rel.dataset_id)
+                if ds:
+                    cited_datasets.append({
+                        "id": ds.id,
+                        "name": ds.name,
+                        "confidence": rel.confidence
+                    })
+
+            papers_summary.append({
                 "id": p.id,
                 "file_name": p.file_name,
                 "title": p.title,
                 "authors": p.authors,
                 "abstract": p.abstract[:200] + "..." if p.abstract and len(p.abstract) > 200 else p.abstract,
                 "keywords": p.keywords,
-                "file_size": p.file_size
-            }
-            for p in papers
-        ]
-        
-        # ポスター情報
+                "file_size": p.file_size,
+                "cited_datasets": cited_datasets
+            })
+
+        # ポスター情報（引用データセット含む）
         posters = poster_repo.find_all()
-        posters_summary = [
-            {
+        posters_summary = []
+        for p in posters:
+            # 引用データセット情報を取得
+            cited_datasets = []
+            rels = poster_dataset_rel_repo.find_by_poster_id(p.id)
+            for rel in rels:
+                ds = dataset_repo.find_by_id(rel.dataset_id)
+                if ds:
+                    cited_datasets.append({
+                        "id": ds.id,
+                        "name": ds.name,
+                        "confidence": rel.confidence
+                    })
+
+            posters_summary.append({
                 "id": p.id,
                 "file_name": p.file_name,
                 "title": p.title,
                 "authors": p.authors,
                 "abstract": p.abstract[:200] + "..." if p.abstract and len(p.abstract) > 200 else p.abstract,
                 "keywords": p.keywords,
-                "file_size": p.file_size
-            }
-            for p in posters
-        ]
-        
-        # データセット情報
+                "file_size": p.file_size,
+                "cited_datasets": cited_datasets
+            })
+
+        # データセット情報（引用元の論文・ポスター含む）
         datasets = dataset_repo.find_all()
-        datasets_summary = [
-            {
+        datasets_summary = []
+        for d in datasets:
+            # このデータセットを引用している論文・ポスターを取得
+            citing_papers = []
+            paper_rels = paper_dataset_rel_repo.find_by_dataset_id(d.id)
+            for rel in paper_rels:
+                paper = paper_repo.find_by_id(rel.paper_id)
+                if paper:
+                    citing_papers.append({
+                        "id": paper.id,
+                        "title": paper.title,
+                        "authors": paper.authors
+                    })
+
+            citing_posters = []
+            poster_rels = poster_dataset_rel_repo.find_by_dataset_id(d.id)
+            for rel in poster_rels:
+                poster = poster_repo.find_by_id(rel.poster_id)
+                if poster:
+                    citing_posters.append({
+                        "id": poster.id,
+                        "title": poster.title,
+                        "authors": poster.authors
+                    })
+
+            datasets_summary.append({
                 "id": d.id,
                 "name": d.name,
                 "description": d.description,
                 "summary": d.summary[:200] + "..." if d.summary and len(d.summary) > 200 else d.summary,
                 "file_count": d.file_count,
                 "total_size": d.total_size,
-                "total_size_mb": round(d.total_size / (1024 * 1024), 2) if d.total_size else 0
-            }
-            for d in datasets
-        ]
+                "total_size_mb": round(d.total_size / (1024 * 1024), 2) if d.total_size else 0,
+                "cited_by_papers": citing_papers,
+                "cited_by_posters": citing_posters
+            })
         
         return {
             "papers": {

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>研究データ管理システム</title>
+    <title>R&D DB</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -29,8 +29,8 @@
         <div class="container mx-auto px-4 py-6">
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-3xl font-bold">研究データ管理システム</h1>
-                    <p class="text-gray-200 mt-1">Google Drive連携 & AI研究相談</p>
+                    <h1 class="text-3xl font-bold">R&D DB</h1>
+                    <p class="text-gray-200 mt-1">Google Drive & LLM Agent</p>
                 </div>
                 <div class="flex items-center space-x-4">
                     <div id="system-status" class="flex items-center space-x-2">
@@ -172,17 +172,17 @@
                     
                     <!-- クイックアクション -->
                     <div class="flex flex-wrap gap-2">
-                        <button onclick="quickQuestion('どんなデータセットがありますか？')" class="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-colors">
-                            データセット一覧
+                        <button onclick="quickQuestion('AI開発に使えるデータセットはありますか？')" class="text-xs bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full hover:bg-yellow-200 transition-colors">
+                            <i class="fas fa-brain mr-1"></i>AI開発用
                         </button>
-                        <button onclick="quickQuestion('ESGに関連する研究はありますか？')" class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200 transition-colors">
-                            ESG研究
+                        <button onclick="quickQuestion('ビジネス分析に使えるデータセットはありますか？')" class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200 transition-colors">
+                            <i class="fas fa-chart-line mr-1"></i>ビジネス分析用
                         </button>
-                        <button onclick="quickQuestion('機械学習の研究について相談したい')" class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-200 transition-colors">
-                            機械学習研究
+                        <button onclick="quickQuestion('社会課題の分析に使えるデータセットはありますか？')" class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-200 transition-colors">
+                            <i class="fas fa-users mr-1"></i>社会課題分析用
                         </button>
-                        <button onclick="showDatabaseOverview()" class="text-xs bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full hover:bg-yellow-200 transition-colors">
-                            <i class="fas fa-database mr-1"></i>DB概要
+                        <button onclick="showDatabaseOverview()" class="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-colors">
+                            <i class="fas fa-database mr-1"></i>全データ概要
                         </button>
                         <button onclick="clearChat()" class="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-200 transition-colors">
                             <i class="fas fa-trash mr-1"></i>履歴クリア
@@ -829,14 +829,14 @@
             categoryChart = new Chart(categoryCtx, {
                 type: 'doughnut',
                 data: {
-                    labels: ['機械学習', 'ESG', 'データ可視化', 'その他'],
+                    labels: ['AI開発・学習', 'ビジネス分析', '社会課題分析', 'その他'],
                     datasets: [{
                         data: [0, 0, 0, 0],
                         backgroundColor: [
-                            'rgba(245, 158, 11, 0.8)',  // yellow
-                            'rgba(34, 197, 94, 0.8)',   // green
-                            'rgba(168, 85, 247, 0.8)',  // purple
-                            'rgba(156, 163, 175, 0.8)'  // gray
+                            'rgba(245, 158, 11, 0.8)',  // yellow (AI開発)
+                            'rgba(34, 197, 94, 0.8)',   // green (ビジネス)
+                            'rgba(168, 85, 247, 0.8)',  // purple (社会課題)
+                            'rgba(156, 163, 175, 0.8)'  // gray (その他)
                         ],
                         borderColor: [
                             'rgba(245, 158, 11, 1)',
@@ -909,11 +909,11 @@
                     const totalSize = document.getElementById('chart-total-size');
                     const avgSize = document.getElementById('chart-avg-size');
                     const lastUpdated = document.getElementById('chart-last-updated');
-                    
+
                     if (totalFiles) totalFiles.textContent = stats.total_files;
-                    if (totalSize) totalSize.textContent = totalSizeMB.toFixed(0);
-                    if (avgSize) avgSize.textContent = 
-                        stats.total_datasets > 0 ? (totalSizeMB / stats.total_datasets).toFixed(0) : '0';
+                    if (totalSize) totalSize.textContent = totalSizeMB.toFixed(2);
+                    if (avgSize) avgSize.textContent =
+                        stats.total_datasets > 0 ? (totalSizeMB / stats.total_datasets).toFixed(2) : '0';
                     
                     // 最終更新時刻
                     const lastUpdatedTime = new Date(stats.last_updated);

@@ -99,14 +99,48 @@ class DatabaseConnection:
             updated_at TIMESTAMP,
             indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             content_hash TEXT,
+            schema_info TEXT,
+            summary TEXT,
             FOREIGN KEY (dataset_id) REFERENCES datasets (id) ON DELETE CASCADE
         );
-        
+
+        -- paper_dataset_relations テーブル（論文とデータセットの関連）
+        CREATE TABLE IF NOT EXISTS paper_dataset_relations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paper_id INTEGER NOT NULL,
+            dataset_id INTEGER NOT NULL,
+            relation_type TEXT DEFAULT 'cited',
+            confidence REAL DEFAULT 1.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            notes TEXT,
+            FOREIGN KEY (paper_id) REFERENCES papers (id) ON DELETE CASCADE,
+            FOREIGN KEY (dataset_id) REFERENCES datasets (id) ON DELETE CASCADE,
+            UNIQUE(paper_id, dataset_id)
+        );
+
+        -- poster_dataset_relations テーブル（ポスターとデータセットの関連）
+        CREATE TABLE IF NOT EXISTS poster_dataset_relations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            poster_id INTEGER NOT NULL,
+            dataset_id INTEGER NOT NULL,
+            relation_type TEXT DEFAULT 'cited',
+            confidence REAL DEFAULT 1.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            notes TEXT,
+            FOREIGN KEY (poster_id) REFERENCES posters (id) ON DELETE CASCADE,
+            FOREIGN KEY (dataset_id) REFERENCES datasets (id) ON DELETE CASCADE,
+            UNIQUE(poster_id, dataset_id)
+        );
+
         -- インデックス作成
         CREATE INDEX IF NOT EXISTS idx_datasets_name ON datasets(name);
         CREATE INDEX IF NOT EXISTS idx_papers_file_name ON papers(file_name);
         CREATE INDEX IF NOT EXISTS idx_posters_file_name ON posters(file_name);
         CREATE INDEX IF NOT EXISTS idx_dataset_files_dataset_id ON dataset_files(dataset_id);
+        CREATE INDEX IF NOT EXISTS idx_paper_dataset_relations_paper ON paper_dataset_relations(paper_id);
+        CREATE INDEX IF NOT EXISTS idx_paper_dataset_relations_dataset ON paper_dataset_relations(dataset_id);
+        CREATE INDEX IF NOT EXISTS idx_poster_dataset_relations_poster ON poster_dataset_relations(poster_id);
+        CREATE INDEX IF NOT EXISTS idx_poster_dataset_relations_dataset ON poster_dataset_relations(dataset_id);
         """
         
         with self.get_connection() as conn:
