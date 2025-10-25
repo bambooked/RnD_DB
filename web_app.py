@@ -6,7 +6,7 @@ Google Drive連携、AI検索・研究相談機能付き
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.requests import Request
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -14,6 +14,11 @@ import os
 import asyncio
 import logging
 from datetime import datetime
+import json
+import secrets
+from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 
 # 既存のコンポーネントをインポート
 import sys
@@ -21,6 +26,9 @@ sys.path.append('.')
 
 from dotenv import load_dotenv
 load_dotenv()
+
+# 開発環境でHTTPを許可（本番環境では削除すること）
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 from agent.source.integrations.google_drive import GoogleDriveIntegration
 from agent.source.integrations.auth import AuthenticationManager
@@ -55,11 +63,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # グローバルインスタンス
-google_drive = GoogleDriveIntegration()
+# GoogleDriveIntegrationは新しいOAuthフローを使うため、初期化しない
+# google_drive = GoogleDriveIntegration()
+google_drive = None
 auth_manager = AuthenticationManager()
 enhanced_advisor = EnhancedResearchAdvisor()
 dataset_advisor = DatasetAdvisor()
-looker_exporter = LookerDataExporter(google_drive)
+looker_exporter = LookerDataExporter(google_drive) if google_drive else None
 gemini_client = GeminiClient()
 
 # リポジトリ
@@ -69,6 +79,56 @@ poster_repo = PosterRepository()
 paper_dataset_rel_repo = PaperDatasetRelationRepository()
 poster_dataset_rel_repo = PosterDatasetRelationRepository()
 dataset_file_repo = DatasetFileRepository()
+
+# OAuth セッション管理（本番環境ではRedisなどを使用すべき）
+oauth_sessions = {}
+user_credentials = {}
+
+# 認証情報の永続化パス
+TOKEN_PATH = 'credentials/google_oauth_token.json'
+
+# 起動時に既存のトークンを読み込む
+def load_credentials():
+    """保存されている認証情報を読み込む"""
+    if os.path.exists(TOKEN_PATH):
+        try:
+            with open(TOKEN_PATH, 'r') as f:
+                token_data = json.load(f)
+            creds = Credentials(
+                token=token_data.get('token'),
+                refresh_token=token_data.get('refresh_token'),
+                token_uri=token_data.get('token_uri'),
+                client_id=token_data.get('client_id'),
+                client_secret=token_data.get('client_secret'),
+                scopes=token_data.get('scopes')
+            )
+            user_credentials['default'] = creds
+            logger.info("保存された認証情報を読み込みました")
+            return True
+        except Exception as e:
+            logger.error(f"認証情報の読み込みエラー: {e}")
+    return False
+
+def save_credentials(creds):
+    """認証情報をファイルに保存"""
+    try:
+        os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
+        token_data = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': creds.scopes
+        }
+        with open(TOKEN_PATH, 'w') as f:
+            json.dump(token_data, f)
+        logger.info("認証情報を保存しました")
+    except Exception as e:
+        logger.error(f"認証情報の保存エラー: {e}")
+
+# 起動時に認証情報を読み込む
+load_credentials()
 
 # リクエスト/レスポンスモデル
 class GoogleDriveSyncRequest(BaseModel):
@@ -122,7 +182,7 @@ async def startup_event():
     
     # 統合機能確認
     integrations = []
-    if google_drive.is_enabled():
+    if google_drive and google_drive.is_enabled():
         integrations.append("Google Drive")
     if auth_manager.is_enabled():
         integrations.append("認証システム")
@@ -137,7 +197,7 @@ async def index(request: Request):
     """メインページ"""
     # システム状態確認
     system_status = {
-        "google_drive": google_drive.is_enabled(),
+        "google_drive": google_drive.is_enabled() if google_drive else False,
         "auth": auth_manager.is_enabled(),
         "database": True
     }
@@ -159,7 +219,7 @@ async def index(request: Request):
 async def get_system_status():
     """システム状態API"""
     return JSONResponse({
-        "google_drive": google_drive.is_enabled(),
+        "google_drive": 'default' in user_credentials,
         "auth": auth_manager.is_enabled(),
         "database": True,
         "stats": {
@@ -172,13 +232,13 @@ async def get_system_status():
 @app.post("/api/sync/google-drive", response_model=SyncResponse)
 async def sync_google_drive(request: GoogleDriveSyncRequest, background_tasks: BackgroundTasks):
     """Google Drive同期API"""
-    if not google_drive.is_enabled():
-        raise HTTPException(status_code=503, detail="Google Drive連携が無効です")
-    
+    if 'default' not in user_credentials:
+        raise HTTPException(status_code=401, detail="Google認証が必要です")
+
     try:
         # バックグラウンドで同期実行
         background_tasks.add_task(perform_google_drive_sync, request.folder_type)
-        
+
         return SyncResponse(
             success=True,
             message="Google Drive同期を開始しました",
@@ -193,8 +253,27 @@ async def perform_google_drive_sync(folder_type: str):
     try:
         logger.info(f"Google Drive同期開始: {folder_type}")
 
+        if 'default' not in user_credentials:
+            logger.error("認証情報がありません")
+            return
+
+        # Google Drive APIサービスを作成
+        creds = user_credentials['default']
+        service = build('drive', 'v3', credentials=creds)
+
         # フォルダ内のファイルを取得
-        folders = google_drive.list_files()
+        folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        if not folder_id:
+            logger.error("GOOGLE_DRIVE_FOLDER_IDが設定されていません")
+            return
+
+        results = service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            pageSize=100,
+            fields="files(id, name, mimeType, parents)"
+        ).execute()
+
+        folders = results.get('files', [])
         files_processed = 0
         errors = []
 
@@ -211,9 +290,14 @@ async def perform_google_drive_sync(folder_type: str):
 
                 if folder_name == 'datasets':
                     # フォルダ内のファイルを処理
-                    files_in_folder = google_drive.list_files(folder_id=folder_id)
+                    results = service.files().list(
+                        q=f"'{folder_id}' in parents and trashed=false",
+                        pageSize=100,
+                        fields="files(id, name, mimeType, parents)"
+                    ).execute()
+                    files_in_folder = results.get('files', [])
                     # datasetsフォルダの場合、サブフォルダを処理
-                    dataset_files_count = await process_datasets_folder(files_in_folder)
+                    dataset_files_count = await process_datasets_folder(files_in_folder, service)
                     files_processed += dataset_files_count
 
         # フェーズ2: 論文・ポスターを処理（cited_datasetsの関連を作成）
@@ -228,14 +312,19 @@ async def perform_google_drive_sync(folder_type: str):
                     continue
 
                 # フォルダ内のファイルを処理
-                files_in_folder = google_drive.list_files(folder_id=folder_id)
+                results = service.files().list(
+                    q=f"'{folder_id}' in parents and trashed=false",
+                    pageSize=100,
+                    fields="files(id, name, mimeType, parents)"
+                ).execute()
+                files_in_folder = results.get('files', [])
 
                 if folder_name != 'datasets':
                     # 通常のフォルダ（paper, poster）の場合
                     for file in files_in_folder:
                         if file.get('mimeType') != 'application/vnd.google-apps.folder':
                             try:
-                                await process_drive_file(file, folder_name)
+                                await process_drive_file(file, folder_name, service)
                                 files_processed += 1
                             except Exception as e:
                                 errors.append(f"{file['name']}: {str(e)}")
@@ -253,20 +342,25 @@ async def perform_google_drive_sync(folder_type: str):
     except Exception as e:
         logger.error(f"Google Drive同期エラー: {e}")
 
-async def process_datasets_folder(dataset_items: List[Dict[str, Any]]) -> int:
+async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) -> int:
     """datasetsフォルダ内のサブフォルダを処理"""
     files_processed = 0
-    
+
     for item in dataset_items:
         if item.get('mimeType') == 'application/vnd.google-apps.folder':
             # データセットサブフォルダ
             dataset_name = item['name']
             dataset_folder_id = item['id']
-            
+
             logger.info(f"データセット処理開始: {dataset_name}")
-            
+
             # データセットフォルダ内のファイルを取得
-            dataset_files = google_drive.list_files(folder_id=dataset_folder_id)
+            results = service.files().list(
+                q=f"'{dataset_folder_id}' in parents and trashed=false",
+                pageSize=100,
+                fields="files(id, name, mimeType, size, createdTime, modifiedTime)"
+            ).execute()
+            dataset_files = results.get('files', [])
             
             # 既存データセット確認
             existing_dataset = dataset_repo.find_by_name(dataset_name)
@@ -293,7 +387,7 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]]) -> int:
                     extension = file_info['name'].split('.')[-1].lower() if '.' in file_info['name'] else ''
                     if extension in ['csv', 'json', 'jsonl']:
                         logger.info(f"データセットファイル解析開始: {file_info['name']}")
-                        file_analysis = await analyze_dataset_file(file_info['id'], file_info['name'], extension)
+                        file_analysis = await analyze_dataset_file(file_info['id'], file_info['name'], extension, service)
 
                         # DatasetFileレコードを作成または更新
                         if existing_dataset:
@@ -365,12 +459,14 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]]) -> int:
     
     return files_processed
 
-async def analyze_dataset_file(file_id: str, file_name: str, file_type: str) -> Dict[str, Any]:
+async def analyze_dataset_file(file_id: str, file_name: str, file_type: str, service) -> Dict[str, Any]:
     """データセットファイル（CSV/JSON）をダウンロードして解析"""
     try:
         import tempfile
         import pandas as pd
         import json
+        from googleapiclient.http import MediaIoBaseDownload
+        import io
 
         # ファイル拡張子からタイプを判定
         extension = file_name.split('.')[-1].lower() if '.' in file_name else ''
@@ -380,9 +476,14 @@ async def analyze_dataset_file(file_id: str, file_name: str, file_type: str) -> 
             tmp_path = tmp_file.name
 
         # Google Driveからファイルをダウンロード
-        if not google_drive.download_file(file_id, tmp_path):
-            logger.error(f"ファイルダウンロード失敗: {file_name}")
-            return {'schema_info': None, 'summary': ''}
+        request = service.files().get_media(fileId=file_id)
+        fh = io.FileIO(tmp_path, 'wb')
+        downloader = MediaIoBaseDownload(fh, request)
+
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        fh.close()
 
         try:
             schema_info = {}
@@ -523,20 +624,27 @@ def save_cited_datasets(item_id: int, cited_datasets: List[str], item_type: str 
         logger.error(f"cited_datasets保存エラー: {e}")
 
 
-async def analyze_pdf_content(file_id: str, file_name: str) -> Dict[str, Any]:
+async def analyze_pdf_content(file_id: str, file_name: str, service) -> Dict[str, Any]:
     """PDFファイルをダウンロードして内容を解析"""
     try:
         import tempfile
         from pypdf import PdfReader
+        from googleapiclient.http import MediaIoBaseDownload
+        import io
 
         # 一時ファイルを作成
         with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
             tmp_path = tmp_file.name
 
         # Google DriveからPDFをダウンロード
-        if not google_drive.download_file(file_id, tmp_path):
-            logger.error(f"PDFダウンロード失敗: {file_name}")
-            return {'title': file_name.replace('.pdf', ''), 'authors': '', 'abstract': '', 'keywords': '', 'cited_datasets': []}
+        request = service.files().get_media(fileId=file_id)
+        fh = io.FileIO(tmp_path, 'wb')
+        downloader = MediaIoBaseDownload(fh, request)
+
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        fh.close()
 
         # PDFからテキストを抽出
         try:
@@ -597,7 +705,7 @@ async def analyze_pdf_content(file_id: str, file_name: str) -> Dict[str, Any]:
             'cited_datasets': []
         }
 
-async def process_drive_file(file: Dict[str, Any], folder_name: str):
+async def process_drive_file(file: Dict[str, Any], folder_name: str, service):
     """個別ファイルの処理"""
     file_info = {
         'name': file['name'],
@@ -617,14 +725,24 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str):
             existing_papers = paper_repo.find_all()
             existing_paper = next((p for p in existing_papers if p.file_path == drive_file_path), None)
 
+            # 既存データがあり、内容が揃っている場合はスキップ
+            if existing_paper and existing_paper.title and existing_paper.abstract:
+                logger.info(f"論文スキップ（既存）: {file_info['name']}")
+                return
+
+            # ファイル名での重複チェック（フォールバック）
+            if any(p.file_name == file_info["name"] for p in existing_papers):
+                logger.info(f"論文スキップ（同名ファイル）: {file_info['name']}")
+                return
+
             # PDFファイルの場合は内容を解析
             metadata = {'title': file_info["name"].replace('.pdf', ''), 'authors': '', 'abstract': '', 'keywords': '', 'cited_datasets': []}
             if file_info['name'].lower().endswith('.pdf'):
                 logger.info(f"PDF解析開始: {file_info['name']}")
-                metadata = await analyze_pdf_content(file_info['id'], file_info['name'])
+                metadata = await analyze_pdf_content(file_info['id'], file_info['name'], service)
 
             if existing_paper:
-                # 既存の論文を更新
+                # 既存の論文を更新（内容が不完全な場合のみ）
                 existing_paper.title = metadata.get('title', existing_paper.title)
                 existing_paper.authors = metadata.get('authors', existing_paper.authors)
                 existing_paper.abstract = metadata.get('abstract', existing_paper.abstract)
@@ -637,11 +755,6 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str):
                     save_cited_datasets(existing_paper.id, cited_datasets, 'paper')
 
                 logger.info(f"論文情報更新: {file_info['name']}")
-                return
-
-            # ファイル名での重複チェック（フォールバック）
-            if any(p.file_name == file_info["name"] for p in existing_papers):
-                logger.info(f"論文スキップ（同名ファイル）: {file_info['name']}")
                 return
 
             # 論文として登録
@@ -671,14 +784,24 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str):
             existing_posters = poster_repo.find_all()
             existing_poster = next((p for p in existing_posters if p.file_path == drive_file_path), None)
 
+            # 既存データがあり、内容が揃っている場合はスキップ
+            if existing_poster and existing_poster.title and existing_poster.abstract:
+                logger.info(f"ポスタースキップ（既存）: {file_info['name']}")
+                return
+
+            # ファイル名での重複チェック（フォールバック）
+            if any(p.file_name == file_info["name"] for p in existing_posters):
+                logger.info(f"ポスタースキップ（同名ファイル）: {file_info['name']}")
+                return
+
             # PDFファイルの場合は内容を解析
             metadata = {'title': file_info["name"].replace('.pdf', ''), 'authors': '', 'abstract': '', 'keywords': '', 'cited_datasets': []}
             if file_info['name'].lower().endswith('.pdf'):
                 logger.info(f"ポスターPDF解析開始: {file_info['name']}")
-                metadata = await analyze_pdf_content(file_info['id'], file_info['name'])
+                metadata = await analyze_pdf_content(file_info['id'], file_info['name'], service)
 
             if existing_poster:
-                # 既存のポスターを更新
+                # 既存のポスターを更新（内容が不完全な場合のみ）
                 existing_poster.title = metadata.get('title', existing_poster.title)
                 existing_poster.authors = metadata.get('authors', existing_poster.authors)
                 existing_poster.abstract = metadata.get('abstract', existing_poster.abstract)
@@ -691,11 +814,6 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str):
                     save_cited_datasets(existing_poster.id, cited_datasets, 'poster')
 
                 logger.info(f"ポスター情報更新: {file_info['name']}")
-                return
-
-            # ファイル名での重複チェック（フォールバック）
-            if any(p.file_name == file_info["name"] for p in existing_posters):
-                logger.info(f"ポスタースキップ（同名ファイル）: {file_info['name']}")
                 return
 
             # ポスターとして登録
@@ -940,25 +1058,28 @@ async def get_database_summary():
 @app.get("/api/google-drive/status")
 async def google_drive_status():
     """Google Drive状態確認API"""
-    if not google_drive.is_enabled():
-        return {"enabled": False, "message": "Google Drive連携が無効です"}
-    
+    if 'default' not in user_credentials:
+        return {"enabled": False, "message": "Google認証が必要です"}
+
     try:
-        # ストレージ情報取得
-        storage_info = google_drive.get_storage_info()
-        files = google_drive.list_files()
-        
-        storage_data = {}
-        if storage_info:
-            storage_data = {
-                "limit_gb": storage_info['limit'] / (1024**3),
-                "usage_gb": storage_info['usage'] / (1024**3),
-                "usage_percent": (storage_info['usage'] / storage_info['limit']) * 100
-            }
-        
+        # Google Drive APIサービスを作成
+        creds = user_credentials['default']
+        service = build('drive', 'v3', credentials=creds)
+
+        # フォルダ情報取得
+        folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        if folder_id:
+            results = service.files().list(
+                q=f"'{folder_id}' in parents and trashed=false",
+                pageSize=100,
+                fields="files(id, name, mimeType)"
+            ).execute()
+            files = results.get('files', [])
+        else:
+            files = []
+
         return {
             "enabled": True,
-            "storage": storage_data,
             "file_count": len(files),
             "folders": [f["name"] for f in files if f.get('mimeType') == 'application/vnd.google-apps.folder']
         }
@@ -998,12 +1119,14 @@ async def export_for_looker_studio(request: LookerExportRequest):
 async def get_looker_export_status():
     """Looker Studioエクスポートの状態を確認"""
     try:
-        # Google Drive連携状態を確認
-        gdrive_enabled = google_drive.is_enabled() if google_drive else False
-        
-        # 最新の統計情報を取得
-        stats = looker_exporter.collect_summary_statistics()
-        
+        # OAuth認証状態を確認
+        gdrive_enabled = 'default' in user_credentials
+
+        # 最新の統計情報を直接収集
+        from agent.source.integrations.looker_export import LookerDataExporter
+        exporter = LookerDataExporter(google_drive_integration=None)
+        stats = exporter.collect_summary_statistics()
+
         return {
             'google_drive_enabled': gdrive_enabled,
             'export_available': gdrive_enabled,
@@ -1011,20 +1134,219 @@ async def get_looker_export_status():
             'dataset_folder': 'dataset',
             'export_format': 'CSV'
         }
-        
+
     except Exception as e:
         logger.error(f"Status check error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return {
             'google_drive_enabled': False,
             'export_available': False,
-            'error': str(e)
+            'error': str(e),
+            'last_stats': {}
         }
+
+# ==================== Google OAuth エンドポイント ====================
+
+@app.get("/api/auth/google/login")
+async def google_login():
+    """Google OAuth認証を開始"""
+    try:
+        # credentials.jsonを読み込み
+        credentials_path = os.getenv('GOOGLE_DRIVE_CREDENTIALS_PATH', 'credentials/google_drive_credentials.json')
+        logger.info(f"Loading credentials from: {credentials_path}")
+        logger.info(f"Absolute path: {os.path.abspath(credentials_path)}")
+
+        if not os.path.exists(credentials_path):
+            raise HTTPException(status_code=500, detail="Google credentials file not found")
+
+        # JSONファイルを読み込んで設定を取得
+        with open(credentials_path, 'r') as f:
+            full_config = json.load(f)
+            logger.info(f"Loaded config keys: {list(full_config.keys())}")
+            # "web" または "installed" キーを取り出す
+            if 'web' in full_config:
+                client_config = full_config
+            elif 'installed' in full_config:
+                client_config = full_config
+            else:
+                raise ValueError(f"Invalid client secrets format. Keys found: {list(full_config.keys())}")
+
+        # OAuth フローを作成
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=['https://www.googleapis.com/auth/drive.readonly'],
+            redirect_uri=f"http://localhost:8000/api/auth/google/callback"
+        )
+
+        # 状態トークンを生成
+        state = secrets.token_urlsafe(32)
+        oauth_sessions[state] = {'timestamp': datetime.now()}
+
+        # 認証URLを生成
+        authorization_url, _ = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            state=state
+        )
+
+        logger.info(f"Generated auth URL: {authorization_url}")
+
+        return JSONResponse({
+            'auth_url': authorization_url
+        })
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Google login error: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/auth/google/callback")
+async def google_callback(request: Request, code: str = None, state: str = None, error: str = None):
+    """Google OAuth コールバック"""
+    try:
+        if error:
+            logger.error(f"OAuth error: {error}")
+            return RedirectResponse(url="/?auth_error=" + error)
+
+        if not code or not state:
+            raise HTTPException(status_code=400, detail="Missing code or state")
+
+        # 状態トークンを検証
+        if state not in oauth_sessions:
+            raise HTTPException(status_code=400, detail="Invalid state token")
+
+        # credentials.jsonを読み込み
+        credentials_path = os.getenv('GOOGLE_DRIVE_CREDENTIALS_PATH', 'credentials/google_drive_credentials.json')
+
+        # JSONファイルを読み込んで設定を取得
+        with open(credentials_path, 'r') as f:
+            full_config = json.load(f)
+            # "web" または "installed" キーを取り出す
+            if 'web' in full_config:
+                client_config = full_config
+            elif 'installed' in full_config:
+                client_config = full_config
+            else:
+                raise ValueError("Invalid client secrets format")
+
+        # OAuth フローを作成
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=['https://www.googleapis.com/auth/drive.readonly'],
+            redirect_uri=f"http://localhost:8000/api/auth/google/callback",
+            state=state
+        )
+
+        # 認証コードをトークンに交換
+        flow.fetch_token(code=code)
+
+        # 認証情報を保存
+        creds = flow.credentials
+        user_credentials['default'] = creds
+        save_credentials(creds)  # ファイルに永続化
+
+        # セッションをクリア
+        del oauth_sessions[state]
+
+        logger.info("Google Drive authentication successful")
+        return RedirectResponse(url="/?auth_success=true")
+
+    except Exception as e:
+        logger.error(f"OAuth callback error: {e}")
+        return RedirectResponse(url="/?auth_error=" + str(e))
+
+
+@app.get("/api/auth/google/status")
+async def google_auth_status():
+    """Google認証状態を確認"""
+    try:
+        logger.info(f"Checking auth status. user_credentials keys: {list(user_credentials.keys())}")
+        if 'default' in user_credentials:
+            creds = user_credentials['default']
+            logger.info(f"User authenticated. Creds type: {type(creds)}")
+            return JSONResponse({
+                'authenticated': True,
+                'email': 'authenticated_user'
+            })
+        else:
+            logger.info("User not authenticated")
+            return JSONResponse({
+                'authenticated': False
+            })
+    except Exception as e:
+        import traceback
+        logger.error(f"Auth status error: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse({
+            'authenticated': False,
+            'error': str(e)
+        })
+
+
+@app.get("/api/drive/folders")
+async def list_drive_folders():
+    """Google Driveのフォルダ一覧を取得"""
+    try:
+        if 'default' not in user_credentials:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        creds = user_credentials['default']
+        service = build('drive', 'v3', credentials=creds)
+
+        # フォルダのみを検索
+        results = service.files().list(
+            q="mimeType='application/vnd.google-apps.folder' and trashed=false",
+            pageSize=100,
+            fields="files(id, name, parents)"
+        ).execute()
+
+        folders = results.get('files', [])
+
+        return JSONResponse({
+            'folders': [
+                {
+                    'id': folder['id'],
+                    'name': folder['name'],
+                    'parents': folder.get('parents', [])
+                }
+                for folder in folders
+            ]
+        })
+
+    except Exception as e:
+        logger.error(f"List folders error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SetFolderRequest(BaseModel):
+    folder_id: str
+
+@app.post("/api/drive/set-folder")
+async def set_drive_folder(request: SetFolderRequest):
+    """同期対象のフォルダを設定"""
+    try:
+        # TODO: データベースまたは設定ファイルに保存
+        # 現在は環境変数として設定
+        os.environ['GOOGLE_DRIVE_FOLDER_ID'] = request.folder_id
+
+        return JSONResponse({
+            'success': True,
+            'folder_id': request.folder_id
+        })
+
+    except Exception as e:
+        logger.error(f"Set folder error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     # 設定読み込み
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", "8000"))
-    
+
     uvicorn.run(app, host=host, port=port, reload=True)

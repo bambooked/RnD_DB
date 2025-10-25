@@ -23,4 +23,5 @@ google_drive_credentials.json
 google_drive_credentials_token.json
 
 
-client_secret.json
+*.json
+.DS_store
