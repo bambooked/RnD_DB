@@ -72,6 +72,12 @@ dataset_advisor = DatasetAdvisor()
 looker_exporter = LookerDataExporter(google_drive) if google_drive else None
 gemini_client = GeminiClient()
 
+# ベクトル検索関連
+from agent.source.integrations.vector_search import VectorSearchEngine
+from agent.source.integrations.vector_indexer import VectorIndexer
+vector_engine = VectorSearchEngine()
+vector_indexer = VectorIndexer()
+
 # リポジトリ
 dataset_repo = DatasetRepository()
 paper_repo = PaperRepository()
@@ -1340,6 +1346,84 @@ async def set_drive_folder(request: SetFolderRequest):
     except Exception as e:
         logger.error(f"Set folder error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== ベクトル検索エンドポイント ====================
+
+@app.post("/api/vector/index")
+async def create_vector_index():
+    """全ドキュメントのベクトルインデックスを作成"""
+    try:
+        if not vector_engine.is_enabled():
+            return JSONResponse({
+                'success': False,
+                'error': 'Vector search is not enabled. Set ENABLE_VECTOR_SEARCH=true in .env'
+            })
+
+        result = vector_indexer.index_all_documents()
+        return JSONResponse(result)
+
+    except Exception as e:
+        logger.error(f"Vector indexing error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JSONResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@app.get("/api/vector/status")
+async def get_vector_search_status():
+    """ベクトル検索の状態を確認"""
+    try:
+        stats = vector_indexer.get_index_stats()
+        return JSONResponse(stats)
+
+    except Exception as e:
+        logger.error(f"Vector status error: {e}")
+        return JSONResponse({
+            'enabled': False,
+            'error': str(e)
+        })
+
+
+@app.post("/api/vector/search")
+async def vector_semantic_search(request: dict):
+    """セマンティック検索を実行"""
+    try:
+        query = request.get('query', '')
+        limit = request.get('limit', 5)
+        threshold = request.get('threshold', 0.7)
+
+        if not query:
+            raise HTTPException(status_code=400, detail="Query is required")
+
+        if not vector_engine.is_enabled():
+            return JSONResponse({
+                'success': False,
+                'results': [],
+                'error': 'Vector search is not enabled'
+            })
+
+        results = vector_engine.search_similar(query, limit=limit, threshold=threshold)
+
+        return JSONResponse({
+            'success': True,
+            'query': query,
+            'results': results,
+            'count': len(results)
+        })
+
+    except Exception as e:
+        logger.error(f"Vector search error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JSONResponse({
+            'success': False,
+            'results': [],
+            'error': str(e)
+        })
 
 
 if __name__ == "__main__":

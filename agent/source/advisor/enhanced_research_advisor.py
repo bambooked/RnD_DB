@@ -13,20 +13,22 @@ import numpy as np
 
 from ..database.new_repository import DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
 from ..analyzer.gemini_client import GeminiClient
+from ..integrations.vector_search import VectorSearchEngine
 
 logger = logging.getLogger(__name__)
 
 
 class EnhancedResearchAdvisor:
     """拡張研究相談機能を提供するクラス"""
-    
+
     def __init__(self):
         self.dataset_repo = DatasetRepository()
         self.paper_repo = PaperRepository()
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
         self.gemini_client = GeminiClient()
-        
+        self.vector_engine = VectorSearchEngine()
+
         # 会話履歴管理
         self.conversation_history: List[Dict[str, Any]] = []
         
@@ -303,10 +305,82 @@ class EnhancedResearchAdvisor:
             }
     
     def _find_similar_documents_enhanced(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """拡張された類似文書検索"""
+        """拡張された類似文書検索（ベクトル検索優先のハイブリッド）"""
+
+        # ベクトル検索が有効な場合は、ベクトル検索を優先
+        if self.vector_engine.is_enabled():
+            logger.info(f"Using vector search for query: {query}")
+            try:
+                vector_results = self.vector_engine.search_similar(
+                    query,
+                    limit=top_k,
+                    threshold=0.5  # セマンティック検索は閾値を下げる
+                )
+
+                # ベクトル検索結果をメタデータ形式に変換
+                enhanced_results = []
+                for result in vector_results:
+                    metadata = result.get('metadata', {})
+                    doc_type = metadata.get('type', '')
+                    doc_id = metadata.get('id', 0)
+
+                    # データベースから詳細情報を取得
+                    if doc_type == 'paper':
+                        paper = self.paper_repo.find_by_id(doc_id)
+                        if paper:
+                            enhanced_results.append({
+                                "type": "paper",
+                                "id": paper.id,
+                                "title": paper.title,
+                                "authors": paper.authors,
+                                "abstract": paper.abstract,
+                                "keywords": paper.keywords,
+                                "file_name": paper.file_name,
+                                "file_path": paper.file_path,
+                                "similarity_score": result.get('similarity', 0.0)
+                            })
+                    elif doc_type == 'poster':
+                        poster = self.poster_repo.find_by_id(doc_id)
+                        if poster:
+                            enhanced_results.append({
+                                "type": "poster",
+                                "id": poster.id,
+                                "title": poster.title,
+                                "authors": poster.authors,
+                                "abstract": poster.abstract,
+                                "keywords": poster.keywords,
+                                "file_name": poster.file_name,
+                                "file_path": poster.file_path,
+                                "similarity_score": result.get('similarity', 0.0)
+                            })
+                    elif doc_type == 'dataset':
+                        dataset = self.dataset_repo.find_by_id(doc_id)
+                        if dataset:
+                            enhanced_results.append({
+                                "type": "dataset",
+                                "id": dataset.id,
+                                "name": dataset.name,
+                                "description": dataset.description,
+                                "summary": dataset.summary,
+                                "file_count": dataset.file_count,
+                                "total_size": dataset.total_size,
+                                "similarity_score": result.get('similarity', 0.0)
+                            })
+
+                if enhanced_results:
+                    logger.info(f"Vector search returned {len(enhanced_results)} results")
+                    return enhanced_results
+                else:
+                    logger.warning("Vector search returned no results, falling back to TF-IDF")
+
+            except Exception as e:
+                logger.error(f"Vector search error, falling back to TF-IDF: {e}")
+
+        # フォールバック: TF-IDFベースの検索
+        logger.info(f"Using TF-IDF search for query: {query}")
         documents = []
         doc_metadata = []
-        
+
         # 論文の検索
         papers = self.paper_repo.find_all()
         for paper in papers:
@@ -323,7 +397,7 @@ class EnhancedResearchAdvisor:
                     "file_name": paper.file_name,
                     "file_path": paper.file_path
                 })
-        
+
         # ポスターの検索
         posters = self.poster_repo.find_all()
         for poster in posters:

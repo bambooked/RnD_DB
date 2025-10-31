@@ -77,17 +77,14 @@ class VectorSearchEngine:
             logger.warning("ChromaDB not installed. Install with: pip install chromadb")
             self.enabled = False
             return False
-        
+
         try:
-            # ローカルまたはリモートクライアント
+            # ローカルまたはリモートクライアント（新しいAPI）
             if self.host == 'localhost':
-                self.client = chromadb.Client(Settings(
-                    chroma_db_impl="duckdb+parquet",
-                    persist_directory="./chroma_db"
-                ))
+                self.client = chromadb.PersistentClient(path="./chroma_db")
             else:
                 self.client = chromadb.HttpClient(host=self.host, port=self.port)
-            
+
             # コレクションを取得または作成
             try:
                 self.collection = self.client.get_collection("research_documents")
@@ -96,10 +93,10 @@ class VectorSearchEngine:
                     name="research_documents",
                     metadata={"description": "Research documents and datasets"}
                 )
-            
+
             logger.info("ChromaDB client initialized successfully")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB: {e}")
             return False
@@ -226,16 +223,21 @@ class VectorSearchEngine:
                     query_embeddings=[query_embedding],
                     n_results=limit
                 )
-                
+
                 for i in range(len(chroma_results['ids'][0])):
                     doc_id = chroma_results['ids'][0][i]
                     distance = chroma_results['distances'][0][i]
-                    similarity = 1 - distance  # Convert distance to similarity
-                    
+                    # Chromaのデフォルトはsquared L2 distance、0に近いほど類似
+                    # 閾値チェックは距離ベースで（小さいほど良い）
+                    similarity = 1.0 / (1.0 + distance)  # 距離を類似度に変換
+
+                    logger.debug(f"Doc {doc_id}: distance={distance:.4f}, similarity={similarity:.4f}, threshold={threshold}")
+
                     if similarity >= threshold:
                         results.append({
                             'id': doc_id,
                             'similarity': similarity,
+                            'distance': distance,
                             'document': chroma_results['documents'][0][i],
                             'metadata': chroma_results['metadatas'][0][i]
                         })
