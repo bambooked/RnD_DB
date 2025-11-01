@@ -318,8 +318,6 @@ RnD_DB/
 │   │   │   └── new_repository.py # リポジトリパターン
 │   │   ├── integrations/         # クラウド連携機能
 │   │   │   ├── google_drive.py   # Google Drive連携
-│   │   │   ├── vector_search.py  # ベクトル検索エンジン（ChromaDB）
-│   │   │   ├── vector_indexer.py # インデックス作成・管理
 │   │   │   └── looker_export.py  # データエクスポート
 │   │   ├── advisor/              # AI相談機能
 │   │   │   └── enhanced_research_advisor.py  # RAG + 関連性フィルタリング
@@ -331,6 +329,8 @@ RnD_DB/
 │   │       ├── service_ports.py  # サービス統合インターフェース
 │   │       ├── config_ports.py   # 設定管理インターフェース
 │   │       ├── vector_search_impl.py  # ChromaDBベクトル検索実装
+│   │       ├── vector_indexer.py      # ベクトルインデックス管理
+│   │       ├── vector_service.py      # ベクトル検索統合サービス
 │   │       └── google_drive_impl.py   # Google Drive入力ポート実装
 │   ├── tests/                    # エージェント関連テスト
 │   └── database/

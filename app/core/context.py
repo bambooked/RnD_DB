@@ -27,8 +27,7 @@ from agent.source.database.new_repository import (
 from agent.source.integrations.auth import AuthenticationManager
 from agent.source.integrations.looker_export import LookerDataExporter
 from agent.source.integrations.openrouter_sync import OpenRouterModelSync
-from agent.source.integrations.vector_indexer import VectorIndexer
-from agent.source.integrations.vector_search import VectorSearchEngine
+from agent.source.interfaces.vector_service import get_vector_search_service
 
 load_dotenv()
 
@@ -55,8 +54,7 @@ looker_exporter = LookerDataExporter(google_drive) if google_drive else None
 llm_client = OpenRouterClient()
 model_sync = OpenRouterModelSync()
 
-vector_engine = VectorSearchEngine()
-vector_indexer = VectorIndexer()
+vector_engine = get_vector_search_service()
 
 dataset_repo = DatasetRepository()
 paper_repo = PaperRepository()
@@ -197,5 +195,4 @@ __all__ = [
     "TOKEN_PATH",
     "user_credentials",
     "vector_engine",
-    "vector_indexer",
 ]

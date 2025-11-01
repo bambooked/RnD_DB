@@ -23,7 +23,6 @@ from .context import (
     templates,
     user_credentials,
     vector_engine,
-    vector_indexer,
 )
 
 __all__ = [
@@ -49,5 +48,4 @@ __all__ = [
     "templates",
     "user_credentials",
     "vector_engine",
-    "vector_indexer",
 ]

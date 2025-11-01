@@ -17,12 +17,11 @@ from ..core import (
     poster_repo,
     user_credentials,
     vector_engine,
-    vector_indexer,
     dataset_repo,
 )
 
 
-def build_admin_overview(limit: int = 6) -> Dict[str, Any]:
+async def build_admin_overview(limit: int = 6) -> Dict[str, Any]:
     """管理者ダッシュボード向けの概要情報を生成"""
     try:
         papers = paper_repo.find_all()
@@ -45,7 +44,7 @@ def build_admin_overview(limit: int = 6) -> Dict[str, Any]:
     }
 
     try:
-        vector_status = vector_indexer.get_index_stats()
+        vector_status = await vector_engine.get_service_status()
     except Exception as exc:
         logger.error("ベクトル検索状態取得エラー: %s", exc)
         vector_status = {

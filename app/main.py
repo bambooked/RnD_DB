@@ -48,7 +48,6 @@ from .core import (
     save_credentials,
     user_credentials,
     vector_engine,
-    vector_indexer,
 )
 from .schemas import (
     ConsultationResponse,
@@ -138,6 +137,13 @@ async def startup_event():
 
     if integrations:
         logger.info(f"統合機能が有効: {', '.join(integrations)}")
+    
+    if vector_engine.is_enabled():
+        try:
+            await vector_engine.initialize()
+            logger.info("ベクトル検索サービスを初期化しました")
+        except Exception as e:
+            logger.error(f"ベクトル検索初期化エラー: {e}")
 
     logger.info("研究データ管理システム Webアプリ起動完了")
 
@@ -951,7 +957,7 @@ async def research_consultation(request: ResearchConsultationRequest):
     """AI研究相談API"""
     try:
         # 相談タイプとモデル指定を渡して適切な処理を実行
-        result = enhanced_advisor.research_consultation(
+        result = await enhanced_advisor.research_consultation(
             request.query,
             consultation_type=request.consultation_type,
             model=request.model
@@ -1466,7 +1472,7 @@ async def create_vector_index():
         if not vector_engine.is_enabled():
             response_data = {
                 'success': False,
-                'error': 'Vector search is not enabled. Set ENABLE_VECTOR_SEARCH=true in .env'
+                'error': 'Vector search is not enabled. Set VECTOR_SEARCH_ENABLED=true (or ENABLE_VECTOR_SEARCH=true) in .env'
             }
             admin_metrics.record_event(
                 "vector_index",
@@ -1476,14 +1482,23 @@ async def create_vector_index():
             )
             return JSONResponse(response_data)
 
-        result = vector_indexer.index_all_documents()
+        result = await vector_engine.index_all_documents()
+        success = result.get('success', False)
+        message = result.get('message') or (
+            f"Indexed {result.get('successful', 0)}/{result.get('total_documents', 0)} documents"
+        )
+        response = {
+            **result,
+            'success': success,
+            'message': message,
+        }
         admin_metrics.record_event(
             "vector_index",
-            "success" if result.get('success') else "error",
-            f"ベクトルインデックス再構築: {result.get('indexed_count', 0)}件処理",
-            extra=result
+            "success" if success else "error",
+            f"ベクトルインデックス再構築: {message}",
+            extra=response
         )
-        return JSONResponse(result)
+        return JSONResponse(response)
 
     except Exception as e:
         logger.error(f"Vector indexing error: {e}")
@@ -1506,8 +1521,8 @@ async def create_vector_index():
 async def get_vector_search_status():
     """ベクトル検索の状態を確認"""
     try:
-        stats = vector_indexer.get_index_stats()
-        return JSONResponse(stats)
+        status = await vector_engine.get_service_status()
+        return JSONResponse(status)
 
     except Exception as e:
         logger.error(f"Vector status error: {e}")
@@ -1535,7 +1550,11 @@ async def vector_semantic_search(request: dict):
                 'error': 'Vector search is not enabled'
             })
 
-        results = vector_engine.search_similar(query, limit=limit, threshold=threshold)
+        results = await vector_engine.vector_search(
+            query=query,
+            top_k=limit,
+            similarity_threshold=threshold
+        )
 
         return JSONResponse({
             'success': True,

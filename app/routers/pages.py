@@ -47,7 +47,7 @@ async def index(request: Request):
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_dashboard(request: Request):
     """設定ダッシュボードページ"""
-    overview = build_admin_overview()
+    overview = await build_admin_overview()
     return templates.TemplateResponse(
         "settings.html",
         {
@@ -78,7 +78,7 @@ async def get_system_status():
 async def get_settings_overview():
     """設定ダッシュボード向け概要情報API"""
     try:
-        overview = build_admin_overview()
+        overview = await build_admin_overview()
         return JSONResponse(overview)
     except Exception as exc:
         logger.error("管理者概要情報APIエラー: %s", exc)
