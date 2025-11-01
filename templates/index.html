@@ -424,20 +424,21 @@
                 const data = await response.json();
 
                 if (data.success && data.models) {
-                    availableModels = data.models;
+                    const filteredModels = data.models.filter(model => model.visible !== false);
+                    availableModels = filteredModels;
 
                     // セレクトボックスに追加
                     const modelSelect = document.getElementById('selected-model');
                     modelSelect.innerHTML = '<option value="">デフォルトモデル</option>';
 
-                    data.models.forEach(model => {
+                    filteredModels.forEach(model => {
                         const option = document.createElement('option');
                         option.value = model.model_id;
                         option.textContent = model.model_name;
                         modelSelect.appendChild(option);
                     });
 
-                    console.log(`${data.models.length}個のモデルを読み込みました`);
+                    console.log(`${filteredModels.length}個の表示対象モデルを読み込みました`);
                 } else {
                     console.error('モデル一覧の取得に失敗しました');
                 }

@@ -1726,10 +1726,10 @@ async def vector_semantic_search(request: dict):
 # ==================== OpenRouterモデル管理エンドポイント ====================
 
 @app.get("/api/models")
-async def get_openrouter_models():
+async def get_openrouter_models(include_hidden: bool = False):
     """OpenRouterモデル一覧を取得"""
     try:
-        models = model_sync.get_models_from_db()
+        models = model_sync.get_models_from_db(include_hidden=include_hidden)
         return JSONResponse({
             'success': True,
             'models': [model.to_dict() for model in models],

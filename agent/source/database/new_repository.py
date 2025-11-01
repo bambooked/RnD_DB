@@ -380,13 +380,13 @@ class OpenRouterModelRepository:
         query = """
         INSERT INTO openrouter_models (
             model_id, model_name, description, context_length,
-            pricing_prompt, pricing_completion, top_provider, architecture, modality
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            pricing_prompt, pricing_completion, top_provider, architecture, modality, visible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             model.model_id, model.model_name, model.description, model.context_length,
             model.pricing_prompt, model.pricing_completion, model.top_provider,
-            model.architecture, model.modality
+            model.architecture, model.modality, int(bool(model.visible))
         )
 
         cursor = self.db.execute_query(query, params)
@@ -403,6 +403,12 @@ class OpenRouterModelRepository:
     def find_all(self) -> List[OpenRouterModel]:
         """全モデルを取得"""
         query = "SELECT * FROM openrouter_models ORDER BY model_name"
+        rows = self.db.fetch_all(query)
+        return [OpenRouterModel.from_dict(dict(row)) for row in rows]
+
+    def find_visible(self) -> List[OpenRouterModel]:
+        """表示対象のモデルのみ取得"""
+        query = "SELECT * FROM openrouter_models WHERE visible = 1 ORDER BY model_name"
         rows = self.db.fetch_all(query)
         return [OpenRouterModel.from_dict(dict(row)) for row in rows]
 
@@ -432,6 +438,7 @@ class OpenRouterModelRepository:
         existing = self.find_by_model_id(model.model_id)
         if existing:
             model.id = existing.id
+            model.visible = existing.visible
             self.update(model)
             return model
         else:
