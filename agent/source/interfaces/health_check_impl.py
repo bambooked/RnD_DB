@@ -108,10 +108,10 @@ class HealthCheckImpl(HealthCheckPort):
             if existing_health['status'] != ServiceStatus.HEALTHY.value:
                 overall_healthy = False
             
-            # Gemini APIチェック
-            gemini_health = await self._check_gemini_api_health()
-            components['gemini_api'] = gemini_health
-            if gemini_health['status'] not in [ServiceStatus.HEALTHY.value, ServiceStatus.DEGRADED.value]:
+            # LLM APIチェック
+            llm_health = await self._check_llm_api_health()
+            components['llm_api'] = llm_health
+            if llm_health['status'] not in [ServiceStatus.HEALTHY.value, ServiceStatus.DEGRADED.value]:
                 overall_healthy = False
             
             # 新機能チェック（設定に応じて）
@@ -280,26 +280,29 @@ class HealthCheckImpl(HealthCheckPort):
                 'error': str(e)
             }
     
-    async def _check_gemini_api_health(self) -> Dict[str, Any]:
-        """Gemini APIヘルスチェック"""
+    async def _check_llm_api_health(self) -> Dict[str, Any]:
+        """OpenRouter LLM APIヘルスチェック"""
         try:
             import os
-            
-            api_key = os.getenv('GEMINI_API_KEY')
+
+            api_key = (
+                os.getenv('OPENROUTER_API_KEY')
+                or os.getenv('GEMINI_API_KEY')
+            )
             if not api_key:
                 return {
                     'status': ServiceStatus.UNHEALTHY.value,
-                    'error': 'Gemini API key not configured'
+                    'error': 'OpenRouter API key not configured'
                 }
-            
+
             # APIキーが設定されているが、実際の接続テストは控える（レート制限回避）
             return {
                 'status': ServiceStatus.HEALTHY.value,
                 'api_key_configured': True,
-                'model': os.getenv('GEMINI_MODEL', 'gemini-2.0-flash-exp'),
+                'model': os.getenv('OPENROUTER_MODEL') or os.getenv('GEMINI_MODEL'),
                 'note': 'API connection not tested to avoid rate limits'
             }
-            
+
         except Exception as e:
             return {
                 'status': ServiceStatus.DEGRADED.value,
@@ -560,7 +563,7 @@ class HealthCheckImpl(HealthCheckPort):
     
     async def _measure_analyze_performance(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """解析パフォーマンス測定"""
-        # Gemini API呼び出しは重いので、設定確認で代替
+        # LLM API呼び出しは重いので、設定確認で代替
         try:
             start_time = time.time()
             

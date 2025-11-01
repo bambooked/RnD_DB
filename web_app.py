@@ -43,7 +43,8 @@ from agent.source.database.new_models import Dataset, Paper, Poster, DatasetFile
 from agent.source.advisor.enhanced_research_advisor import EnhancedResearchAdvisor
 from agent.source.advisor.dataset_advisor import DatasetAdvisor
 from agent.source.integrations.looker_export import LookerDataExporter
-from agent.source.analyzer.gemini_client import GeminiClient
+from agent.source.analyzer.openrouter_client import OpenRouterClient
+from agent.source.integrations.openrouter_sync import OpenRouterModelSync
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)
@@ -70,7 +71,8 @@ auth_manager = AuthenticationManager()
 enhanced_advisor = EnhancedResearchAdvisor()
 dataset_advisor = DatasetAdvisor()
 looker_exporter = LookerDataExporter(google_drive) if google_drive else None
-gemini_client = GeminiClient()
+llm_client = OpenRouterClient()
+model_sync = OpenRouterModelSync()
 
 # ベクトル検索関連
 from agent.source.integrations.vector_search import VectorSearchEngine
@@ -136,6 +138,29 @@ def save_credentials(creds):
 # 起動時に認証情報を読み込む
 load_credentials()
 
+# バックグラウンドタスク管理
+import threading
+import time
+
+def background_model_sync_task():
+    """24時間ごとにOpenRouterモデル一覧を同期するバックグラウンドタスク"""
+    while True:
+        try:
+            logger.info("バックグラウンドタスク: OpenRouterモデル一覧の同期を開始")
+            result = model_sync.sync_if_needed()
+            if result.get("success"):
+                logger.info(f"バックグラウンドタスク: {result.get('message')}")
+            else:
+                logger.error(f"バックグラウンドタスク: {result.get('message')}")
+        except Exception as e:
+            logger.error(f"バックグラウンドタスクエラー: {e}")
+
+        # 24時間待機
+        time.sleep(24 * 60 * 60)
+
+# バックグラウンドタスクを起動
+background_thread = None
+
 # リクエスト/レスポンスモデル
 class GoogleDriveSyncRequest(BaseModel):
     folder_type: str  # "all", "datasets", "papers", "posters"
@@ -148,6 +173,7 @@ class SearchRequest(BaseModel):
 class ResearchConsultationRequest(BaseModel):
     query: str
     consultation_type: str = "general"  # "general", "database", "planning"
+    model: Optional[str] = None  # OpenRouterモデルID（オプション）
 
 class SyncResponse(BaseModel):
     success: bool
@@ -181,22 +207,45 @@ class LookerExportResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """アプリケーション起動時の初期化"""
+    global background_thread
+
     logger.info("研究データ管理システム Webアプリ起動中...")
-    
+
     # データベース初期化
     db_connection.initialize_database()
     logger.info("データベース初期化完了")
-    
+
+    # OpenRouterモデル一覧の初回同期
+    try:
+        logger.info("OpenRouterモデル一覧の初回同期を実行...")
+        result = model_sync.sync_if_needed()
+        if result.get("success"):
+            logger.info(f"モデル同期完了: {result.get('message')}")
+        else:
+            logger.warning(f"モデル同期スキップまたは失敗: {result.get('message')}")
+    except Exception as e:
+        logger.error(f"モデル同期エラー: {e}")
+
+    # バックグラウンドタスクを起動
+    if background_thread is None or not background_thread.is_alive():
+        background_thread = threading.Thread(
+            target=background_model_sync_task,
+            daemon=True,
+            name="OpenRouterModelSync"
+        )
+        background_thread.start()
+        logger.info("バックグラウンドタスク（モデル同期）を起動しました")
+
     # 統合機能確認
     integrations = []
     if google_drive and google_drive.is_enabled():
         integrations.append("Google Drive")
     if auth_manager.is_enabled():
         integrations.append("認証システム")
-    
+
     if integrations:
         logger.info(f"統合機能が有効: {', '.join(integrations)}")
-    
+
     logger.info("研究データ管理システム Webアプリ起動完了")
 
 @app.get("/", response_class=HTMLResponse)
@@ -442,7 +491,7 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                 dataset_description = None
                 if len(dataset_file_list) > 0:
                     logger.info(f"データセット解説生成開始: {dataset_name}")
-                    dataset_description = gemini_client.generate_dataset_description(
+                    dataset_description = llm_client.generate_dataset_description(
                         dataset_name,
                         [{'name': f['name'], 'type': f['mime_type'], 'size': f['size']} for f in dataset_file_list]
                     )
@@ -535,10 +584,10 @@ async def analyze_dataset_file(file_id: str, file_name: str, file_type: str, ser
                     'null_counts': df.isnull().sum().to_dict()
                 }
 
-                # Gemini APIでサマリーを生成
+                # LLMでサマリーを生成（必要に応じて利用）
                 content_preview = f"Columns: {', '.join(df.columns)}\n\nFirst 10 rows:\n{df.head(10).to_string()}"
 
-                # 簡易的な要約（Gemini APIなしで生成）
+                # 簡易的な要約（LLMなしで生成）
                 summary = f"CSV file with {len(df.columns)} columns: {', '.join(list(df.columns)[:5])}"
                 if len(df.columns) > 5:
                     summary += f" and {len(df.columns) - 5} more"
@@ -571,7 +620,7 @@ async def analyze_dataset_file(file_id: str, file_name: str, file_type: str, ser
                             }
                         content_preview = json.dumps(data, indent=2, ensure_ascii=False)[:5000]
 
-                # 簡易的な要約（Gemini APIなしで生成）
+                # 簡易的な要約（LLMなしで生成）
                 if schema_info.get('format') == 'jsonl':
                     summary = f"JSONL file with {schema_info.get('line_count_sample', 0)} lines"
                     if schema_info.get('sample_keys'):
@@ -636,8 +685,8 @@ def save_cited_datasets(item_id: int, cited_datasets: List[str], item_type: str 
                             paper_id=item_id,
                             dataset_id=dataset.id,
                             relation_type='cited',
-                            confidence=0.8,  # Gemini APIからの抽出なので少し低めの信頼度
-                            notes=f'Extracted from PDF content by Gemini API'
+                            confidence=0.8,  # LLMからの抽出なので少し低めの信頼度
+                            notes='Extracted from PDF content by LLM (OpenRouter)'
                         )
                         paper_dataset_rel_repo.create(relation)
                         logger.info(f"論文-データセット関連を保存: Paper#{item_id} -> {dataset_name}")
@@ -649,7 +698,7 @@ def save_cited_datasets(item_id: int, cited_datasets: List[str], item_type: str 
                             dataset_id=dataset.id,
                             relation_type='cited',
                             confidence=0.8,
-                            notes=f'Extracted from PDF content by Gemini API'
+                            notes='Extracted from PDF content by LLM (OpenRouter)'
                         )
                         poster_dataset_rel_repo.create(relation)
                         logger.info(f"ポスター-データセット関連を保存: Poster#{item_id} -> {dataset_name}")
@@ -698,9 +747,9 @@ async def analyze_pdf_content(file_id: str, file_name: str, service) -> Dict[str
 
             full_text = "\n\n".join(text_content)
 
-            # Gemini APIで解析
+            # LLMで解析
             if full_text.strip():
-                analysis = gemini_client.analyze_paper_metadata(file_name, full_text[:10000])  # 最初の10000文字
+                analysis = llm_client.analyze_paper_metadata(file_name, full_text[:10000])  # 最初の10000文字
                 if analysis and isinstance(analysis, dict):
                     logger.info(f"PDF解析完了: {file_name}")
                     # 必須フィールドの確認と補完
@@ -960,22 +1009,23 @@ async def search_research_data(request: SearchRequest):
 async def research_consultation(request: ResearchConsultationRequest):
     """AI研究相談API"""
     try:
-        # 相談タイプを渡して適切な処理を実行
+        # 相談タイプとモデル指定を渡して適切な処理を実行
         result = enhanced_advisor.research_consultation(
-            request.query, 
-            consultation_type=request.consultation_type
+            request.query,
+            consultation_type=request.consultation_type,
+            model=request.model
         )
-        
+
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
-        
+
         return ConsultationResponse(
             advice=result.get("advice", ""),
             related_documents=result.get("related_documents", []),
             relevant_datasets=result.get("relevant_datasets", []),
             next_actions=result.get("next_actions", [])
         )
-        
+
     except Exception as e:
         logger.error(f"研究相談エラー: {e}")
         raise HTTPException(status_code=500, detail=f"研究相談エラー: {str(e)}")
@@ -1469,6 +1519,41 @@ async def vector_semantic_search(request: dict):
             'success': False,
             'results': [],
             'error': str(e)
+        })
+
+
+# ==================== OpenRouterモデル管理エンドポイント ====================
+
+@app.get("/api/models")
+async def get_openrouter_models():
+    """OpenRouterモデル一覧を取得"""
+    try:
+        models = model_sync.get_models_from_db()
+        return JSONResponse({
+            'success': True,
+            'models': [model.to_dict() for model in models],
+            'count': len(models)
+        })
+    except Exception as e:
+        logger.error(f"モデル一覧取得エラー: {e}")
+        return JSONResponse({
+            'success': False,
+            'models': [],
+            'error': str(e)
+        })
+
+
+@app.post("/api/models/sync")
+async def sync_openrouter_models():
+    """OpenRouterモデル一覧を手動で同期"""
+    try:
+        result = model_sync.sync_models()
+        return JSONResponse(result)
+    except Exception as e:
+        logger.error(f"モデル同期エラー: {e}")
+        return JSONResponse({
+            'success': False,
+            'message': f"同期エラー: {str(e)}"
         })
 
 

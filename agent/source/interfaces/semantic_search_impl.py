@@ -3,7 +3,7 @@ SemanticSearchPort実装
 
 Instance B拡張: 高度なセマンティック検索機能
 - 意図理解に基づく検索
-- Google Gemini APIとの連携によるクエリ拡張
+- OpenRouter経由のLLMとの連携によるクエリ拡張
 - 検索結果の説明生成
 - 関連クエリ提案機能
 """
@@ -27,30 +27,29 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
     
     機能：
     - 意図理解に基づく検索クエリ拡張
-    - Google Gemini APIとの連携
+    - OpenRouter経由のLLMとの連携
     - 検索結果の説明生成
     - 関連クエリ提案
     """
     
     def __init__(self, vector_search_port: Optional[ChromaVectorSearchPort] = None):
         self.vector_search_port = vector_search_port
-        self._gemini_client = None
+        self._llm_client = None
         self._intent_cache = {}  # 意図理解結果キャッシュ
         self._explanation_cache = {}  # 説明生成結果キャッシュ
         
-        # Gemini APIクライアント初期化（遅延初期化）
-        self._initialize_gemini_client()
+        # LLMクライアント初期化（遅延初期化）
+        self._initialize_llm_client()
     
-    def _initialize_gemini_client(self):
-        """Gemini APIクライアント初期化"""
+    def _initialize_llm_client(self):
+        """OpenRouterベースのLLMクライアント初期化"""
         try:
-            # 既存のGeminiClientを再利用
-            from ..analyzer.gemini_client import GeminiClient
-            self._gemini_client = GeminiClient()
-            logger.info("Semantic search: Gemini client initialized")
+            from ..analyzer.openrouter_client import OpenRouterClient
+            self._llm_client = OpenRouterClient()
+            logger.info("Semantic search: OpenRouter client initialized")
         except Exception as e:
-            logger.warning(f"Gemini client initialization failed: {e}")
-            self._gemini_client = None
+            logger.warning(f"LLM client initialization failed: {e}")
+            self._llm_client = None
     
     async def search_with_intent(
         self,
@@ -167,8 +166,8 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
         try:
             related_queries = []
             
-            # 1. Gemini APIによる関連クエリ生成
-            if self._gemini_client:
+            # 1. LLMによる関連クエリ生成
+            if self._llm_client:
                 ai_suggestions = await self._generate_ai_related_queries(query)
                 related_queries.extend(ai_suggestions)
             
@@ -220,14 +219,14 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
             
             expanded_queries = [query]  # 元クエリは必ず含める
             
-            if self._gemini_client:
-                # Gemini APIで意図理解・クエリ拡張
+            if self._llm_client:
+                # LLMで意図理解・クエリ拡張
                 intent_prompt = self._build_intent_understanding_prompt(query, intent_context)
                 
                 try:
                     response = await asyncio.get_event_loop().run_in_executor(
                         None,
-                        self._gemini_client.generate_response,
+                        self._llm_client.generate_response,
                         intent_prompt
                     )
                     
@@ -236,7 +235,7 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
                     expanded_queries.extend(ai_expanded)
                     
                 except Exception as e:
-                    logger.warning(f"Gemini intent understanding failed: {e}")
+                    logger.warning(f"LLM intent understanding failed: {e}")
             
             # 基本的なクエリ拡張（同義語・関連語）
             basic_expansions = self._basic_query_expansion(query)
@@ -285,7 +284,7 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
         return base_prompt
     
     def _parse_intent_response(self, response: str) -> List[str]:
-        """Gemini APIレスポンスから拡張クエリを抽出"""
+        """LLMレスポンスから拡張クエリを抽出"""
         try:
             expanded_queries = []
             lines = response.strip().split('\n')
@@ -394,8 +393,8 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
             if doc.authors and query_lower in doc.authors.lower():
                 explanation_parts.append("著者名にクエリが含まれています")
             
-            # Gemini APIによる高度な説明生成（可能であれば）
-            if self._gemini_client and len(explanation_parts) <= 2:
+            # LLMによる高度な説明生成（可能であれば）
+            if self._llm_client and len(explanation_parts) <= 2:
                 ai_explanation = await self._generate_ai_explanation(query, result)
                 if ai_explanation:
                     explanation_parts.append(ai_explanation)
@@ -432,7 +431,7 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
             
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                self._gemini_client.generate_response,
+                self._llm_client.generate_response,
                 explanation_prompt
             )
             
@@ -450,7 +449,7 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
     async def _generate_ai_related_queries(self, query: str) -> List[str]:
         """AI による関連クエリ生成"""
         try:
-            if not self._gemini_client:
+            if not self._llm_client:
                 return []
             
             related_prompt = f"""
@@ -467,7 +466,7 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
             
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                self._gemini_client.generate_response,
+                self._llm_client.generate_response,
                 related_prompt
             )
             

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import logging
 
-from .gemini_client import GeminiClient
+from .openrouter_client import OpenRouterClient
 from .file_analyzer import FileAnalyzer
 from ..database.new_repository import (
     DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
@@ -16,7 +16,7 @@ class NewFileAnalyzer:
     """新しいデータベース構造に対応したファイル解析クラス"""
     
     def __init__(self):
-        self.gemini_client = GeminiClient()
+        self.llm_client = OpenRouterClient()
         self.file_analyzer = FileAnalyzer()
         self.dataset_repo = DatasetRepository()
         self.paper_repo = PaperRepository()
@@ -51,9 +51,9 @@ class NewFileAnalyzer:
             logger.warning(f"読み込み可能なファイルがありません: {dataset.name}")
             return None
         
-        # Gemini APIでデータセット全体を解析
+        # LLMでデータセット全体を解析
         logger.info(f"データセット解析中: {dataset.name}")
-        analysis_result = self.gemini_client.analyze_dataset_collection(
+        analysis_result = self.llm_client.analyze_dataset_collection(
             dataset.name, file_contents
         )
         
@@ -80,9 +80,9 @@ class NewFileAnalyzer:
         if not content:
             return None
         
-        # Gemini APIで論文を解析
+        # LLMで論文を解析
         logger.info(f"論文解析中: {paper.file_name}")
-        analysis_result = self.gemini_client._analyze_pdf_content(content)
+        analysis_result = self.llm_client._analyze_pdf_content(content)
         
         if analysis_result:
             # 論文情報を更新
@@ -107,9 +107,9 @@ class NewFileAnalyzer:
         if not content:
             return None
         
-        # Gemini APIでポスターを解析
+        # LLMでポスターを解析
         logger.info(f"ポスター解析中: {poster.file_name}")
-        analysis_result = self.gemini_client._analyze_pdf_content(content)
+        analysis_result = self.llm_client._analyze_pdf_content(content)
         
         if analysis_result:
             # ポスター情報を更新

@@ -7,7 +7,7 @@ import numpy as np
 
 from ..database.repository import FileRepository, AnalysisResultRepository
 from ..database.new_repository import DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
-from ..analyzer.gemini_client import GeminiClient
+from ..analyzer.openrouter_client import OpenRouterClient
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class ResearchAdvisor:
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
         
-        self.gemini_client = GeminiClient()
+        self.llm_client = OpenRouterClient()
     
     def find_similar_documents(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """クエリに類似した文書を検索"""
@@ -139,8 +139,8 @@ class ResearchAdvisor:
                 "related_documents": []
             }
         
-        # Gemini APIでアドバイスを生成
-        advice_result = self.gemini_client.generate_research_advice(query, similar_docs)
+        # LLMでアドバイスを生成
+        advice_result = self.llm_client.generate_research_advice(query, similar_docs)
         
         if advice_result:
             advice_result["related_documents"] = similar_docs
