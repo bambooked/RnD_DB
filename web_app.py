@@ -469,11 +469,11 @@ async def index(request: Request):
     })
 
 
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request):
-    """管理者ダッシュボードページ"""
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_dashboard(request: Request):
+    """設定ダッシュボードページ"""
     overview = build_admin_overview()
-    return templates.TemplateResponse("admin.html", {
+    return templates.TemplateResponse("settings.html", {
         "request": request,
         "overview": overview
     })
@@ -493,9 +493,9 @@ async def get_system_status():
     })
 
 
-@app.get("/api/admin/overview")
-async def get_admin_overview():
-    """管理者ダッシュボード向け概要情報API"""
+@app.get("/api/settings/overview")
+async def get_settings_overview():
+    """設定ダッシュボード向け概要情報API"""
     try:
         overview = build_admin_overview()
         return JSONResponse(overview)
