@@ -140,6 +140,22 @@ class DatabaseConnection:
             UNIQUE(poster_id, dataset_id)
         );
 
+        -- openrouter_models テーブル（OpenRouterで利用可能なモデル情報）
+        CREATE TABLE IF NOT EXISTS openrouter_models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_id TEXT UNIQUE NOT NULL,
+            model_name TEXT NOT NULL,
+            description TEXT,
+            context_length INTEGER,
+            pricing_prompt REAL,
+            pricing_completion REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            top_provider TEXT,
+            architecture TEXT,
+            modality TEXT
+        );
+
         -- インデックス作成
         CREATE INDEX IF NOT EXISTS idx_datasets_name ON datasets(name);
         CREATE INDEX IF NOT EXISTS idx_papers_file_name ON papers(file_name);
@@ -149,6 +165,7 @@ class DatabaseConnection:
         CREATE INDEX IF NOT EXISTS idx_paper_dataset_relations_dataset ON paper_dataset_relations(dataset_id);
         CREATE INDEX IF NOT EXISTS idx_poster_dataset_relations_poster ON poster_dataset_relations(poster_id);
         CREATE INDEX IF NOT EXISTS idx_poster_dataset_relations_dataset ON poster_dataset_relations(dataset_id);
+        CREATE INDEX IF NOT EXISTS idx_openrouter_models_model_id ON openrouter_models(model_id);
         """
         
         with self.get_connection() as conn:

@@ -250,3 +250,46 @@ class PosterDatasetRelation:
         if data.get("created_at"):
             data["created_at"] = datetime.fromisoformat(data["created_at"])
         return cls(**data)
+
+
+@dataclass
+class OpenRouterModel:
+    """OpenRouterモデル情報を表すデータクラス"""
+    id: Optional[int] = None
+    model_id: str = ""
+    model_name: str = ""
+    description: Optional[str] = None
+    context_length: Optional[int] = None
+    pricing_prompt: Optional[float] = None
+    pricing_completion: Optional[float] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    top_provider: Optional[str] = None
+    architecture: Optional[str] = None
+    modality: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        """辞書形式に変換"""
+        return {
+            "id": self.id,
+            "model_id": self.model_id,
+            "model_name": self.model_name,
+            "description": self.description,
+            "context_length": self.context_length,
+            "pricing_prompt": self.pricing_prompt,
+            "pricing_completion": self.pricing_completion,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "top_provider": self.top_provider,
+            "architecture": self.architecture,
+            "modality": self.modality
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "OpenRouterModel":
+        """辞書から作成"""
+        if data.get("created_at"):
+            data["created_at"] = datetime.fromisoformat(data["created_at"])
+        if data.get("updated_at"):
+            data["updated_at"] = datetime.fromisoformat(data["updated_at"])
+        return cls(**data)

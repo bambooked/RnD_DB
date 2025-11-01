@@ -21,21 +21,25 @@ logger = logging.getLogger(__name__)
 class EnhancedResearchAdvisor:
     """拡張研究相談機能を提供するクラス"""
 
-    def __init__(self):
+    def __init__(self, model: Optional[str] = None):
         self.dataset_repo = DatasetRepository()
         self.paper_repo = PaperRepository()
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
-        self.llm_client = OpenRouterClient()
+        self.llm_client = OpenRouterClient(model=model)
         self.vector_engine = VectorSearchEngine()
 
         # 会話履歴管理
         self.conversation_history: List[Dict[str, Any]] = []
-        
-    def research_consultation(self, user_query: str, consultation_type: str = "general") -> Dict[str, Any]:
+
+    def research_consultation(self, user_query: str, consultation_type: str = "general", model: Optional[str] = None) -> Dict[str, Any]:
         """Web API用の研究相談メソッド"""
-        logger.info(f"研究相談開始: {user_query} (タイプ: {consultation_type})")
-        
+        logger.info(f"研究相談開始: {user_query} (タイプ: {consultation_type}, モデル: {model or 'デフォルト'})")
+
+        # モデルが指定されている場合、一時的にLLMクライアントを更新
+        if model:
+            self.llm_client = OpenRouterClient(model=model)
+
         # 相談タイプに応じて処理を分岐
         if consultation_type == "database":
             return self._handle_database_query(user_query)

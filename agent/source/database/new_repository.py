@@ -3,7 +3,7 @@ from datetime import datetime
 import logging
 
 from .connection import db_connection
-from .new_models import Dataset, Paper, Poster, DatasetFile, PaperDatasetRelation, PosterDatasetRelation
+from .new_models import Dataset, Paper, Poster, DatasetFile, PaperDatasetRelation, PosterDatasetRelation, OpenRouterModel
 
 logger = logging.getLogger(__name__)
 
@@ -367,3 +367,95 @@ class PosterDatasetRelationRepository:
         query = "DELETE FROM poster_dataset_relations WHERE id = ?"
         cursor = self.db.execute_query(query, (relation_id,))
         return cursor.rowcount > 0
+
+
+class OpenRouterModelRepository:
+    """OpenRouterモデルテーブルのリポジトリ"""
+
+    def __init__(self):
+        self.db = db_connection
+
+    def create(self, model: OpenRouterModel) -> OpenRouterModel:
+        """モデルを作成"""
+        query = """
+        INSERT INTO openrouter_models (
+            model_id, model_name, description, context_length,
+            pricing_prompt, pricing_completion, top_provider, architecture, modality
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            model.model_id, model.model_name, model.description, model.context_length,
+            model.pricing_prompt, model.pricing_completion, model.top_provider,
+            model.architecture, model.modality
+        )
+
+        cursor = self.db.execute_query(query, params)
+        model.id = cursor.lastrowid
+        logger.info(f"OpenRouterモデルを登録: {model.model_id}")
+        return model
+
+    def find_by_model_id(self, model_id: str) -> Optional[OpenRouterModel]:
+        """モデルIDでモデルを検索"""
+        query = "SELECT * FROM openrouter_models WHERE model_id = ?"
+        row = self.db.fetch_one(query, (model_id,))
+        return OpenRouterModel.from_dict(dict(row)) if row else None
+
+    def find_all(self) -> List[OpenRouterModel]:
+        """全モデルを取得"""
+        query = "SELECT * FROM openrouter_models ORDER BY model_name"
+        rows = self.db.fetch_all(query)
+        return [OpenRouterModel.from_dict(dict(row)) for row in rows]
+
+    def update(self, model: OpenRouterModel) -> bool:
+        """モデルを更新"""
+        query = """
+        UPDATE openrouter_models SET
+            model_name = ?, description = ?, context_length = ?,
+            pricing_prompt = ?, pricing_completion = ?, top_provider = ?,
+            architecture = ?, modality = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE model_id = ?
+        """
+        params = (
+            model.model_name, model.description, model.context_length,
+            model.pricing_prompt, model.pricing_completion, model.top_provider,
+            model.architecture, model.modality, model.model_id
+        )
+
+        cursor = self.db.execute_query(query, params)
+        success = cursor.rowcount > 0
+        if success:
+            logger.info(f"OpenRouterモデルを更新: {model.model_id}")
+        return success
+
+    def upsert(self, model: OpenRouterModel) -> OpenRouterModel:
+        """モデルを作成または更新（既存の場合は更新）"""
+        existing = self.find_by_model_id(model.model_id)
+        if existing:
+            model.id = existing.id
+            self.update(model)
+            return model
+        else:
+            return self.create(model)
+
+    def delete(self, model_id: str) -> bool:
+        """モデルを削除"""
+        query = "DELETE FROM openrouter_models WHERE model_id = ?"
+        cursor = self.db.execute_query(query, (model_id,))
+        success = cursor.rowcount > 0
+        if success:
+            logger.info(f"OpenRouterモデルを削除: {model_id}")
+        return success
+
+    def get_last_update_time(self) -> Optional[datetime]:
+        """最終更新時刻を取得"""
+        query = "SELECT MAX(updated_at) as last_update FROM openrouter_models"
+        row = self.db.fetch_one(query)
+        if row and row['last_update']:
+            return datetime.fromisoformat(row['last_update'])
+        return None
+
+    def count(self) -> int:
+        """モデル数を取得"""
+        query = "SELECT COUNT(*) as count FROM openrouter_models"
+        row = self.db.fetch_one(query)
+        return row['count'] if row else 0
