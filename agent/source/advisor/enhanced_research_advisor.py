@@ -121,6 +121,7 @@ class EnhancedResearchAdvisor:
         relevant_datasets = []
         for ds in datasets:
             relevant_datasets.append({
+                "id": ds.id,  # フロントエンド互換性のためidも追加
                 "dataset_id": ds.id,
                 "name": ds.name,
                 "description": ds.description or "",
@@ -184,6 +185,7 @@ class EnhancedResearchAdvisor:
         relevant_datasets = []
         for ds in datasets:
             relevant_datasets.append({
+                "id": ds.id,  # フロントエンド互換性のためidも追加
                 "dataset_id": ds.id,
                 "name": ds.name,
                 "description": ds.description or "",
@@ -515,6 +517,7 @@ class EnhancedResearchAdvisor:
             # 関連性が高い場合のみ追加（閾値: 5以上 = データセット名一致 or 重要キーワード2つ以上一致）
             if relevance_score >= 5:
                 relevant_datasets.append({
+                    "id": dataset.id,  # フロントエンド互換性のためidも追加
                     "dataset_id": dataset.id,
                     "name": dataset.name,
                     "description": dataset.description,

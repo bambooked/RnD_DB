@@ -1827,8 +1827,35 @@
                     const headerRow = document.createElement('tr');
                     preview.columns.forEach(col => {
                         const th = document.createElement('th');
-                        th.className = 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
-                        th.textContent = col;
+                        th.className = 'px-4 py-3 text-left text-xs font-medium text-gray-700 tracking-wider bg-gradient-to-r from-gray-50 to-gray-100';
+
+                        // データ型に応じたアイコンを追加
+                        let typeIcon = 'fa-question';
+                        let typeColor = 'text-gray-500';
+
+                        if (preview.statistics && preview.statistics[col]) {
+                            const typeStr = preview.statistics[col].type.toLowerCase();
+                            if (typeStr.includes('int') || typeStr.includes('float')) {
+                                typeIcon = 'fa-hashtag';
+                                typeColor = 'text-blue-500';
+                            } else if (typeStr.includes('object') || typeStr.includes('string')) {
+                                typeIcon = 'fa-font';
+                                typeColor = 'text-green-500';
+                            } else if (typeStr.includes('bool')) {
+                                typeIcon = 'fa-toggle-on';
+                                typeColor = 'text-purple-500';
+                            } else if (typeStr.includes('datetime')) {
+                                typeIcon = 'fa-calendar';
+                                typeColor = 'text-orange-500';
+                            }
+                        }
+
+                        th.innerHTML = `
+                            <div class="flex items-center space-x-2">
+                                <i class="fas ${typeIcon} ${typeColor}"></i>
+                                <span class="font-bold">${escapeHtml(col)}</span>
+                            </div>
+                        `;
                         headerRow.appendChild(th);
                     });
                     thead.appendChild(headerRow);
@@ -1837,13 +1864,56 @@
                     if (preview.rows && preview.rows.length > 0) {
                         preview.rows.forEach((row, idx) => {
                             const tr = document.createElement('tr');
-                            tr.className = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                            tr.className = idx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-gray-50 hover:bg-blue-50';
+                            tr.style.transition = 'background-color 0.2s';
 
                             preview.columns.forEach(col => {
                                 const td = document.createElement('td');
-                                td.className = 'px-4 py-3 text-sm text-gray-900 whitespace-nowrap';
                                 const value = row[col];
-                                td.textContent = value !== null && value !== undefined ? String(value) : '';
+
+                                // データ型に応じたスタイル
+                                let cellClass = 'px-4 py-3 text-sm';
+                                let cellContent = '';
+
+                                if (value === null || value === undefined || value === '') {
+                                    // NULL値
+                                    cellClass += ' text-gray-400 italic';
+                                    cellContent = '<span class="bg-gray-200 px-2 py-1 rounded text-xs">NULL</span>';
+                                } else {
+                                    const stats = preview.statistics ? preview.statistics[col] : null;
+                                    if (stats) {
+                                        const typeStr = stats.type.toLowerCase();
+                                        if (typeStr.includes('int') || typeStr.includes('float')) {
+                                            // 数値型
+                                            cellClass += ' text-blue-700 font-mono text-right';
+                                            cellContent = String(value);
+                                        } else if (typeStr.includes('bool')) {
+                                            // ブール型
+                                            const boolValue = String(value).toLowerCase();
+                                            if (boolValue === 'true' || boolValue === '1') {
+                                                cellContent = '<span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">TRUE</span>';
+                                            } else {
+                                                cellContent = '<span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-semibold">FALSE</span>';
+                                            }
+                                            cellClass += ' text-gray-900';
+                                        } else {
+                                            // 文字列型
+                                            cellClass += ' text-gray-900';
+                                            const strValue = String(value);
+                                            if (strValue.length > 50) {
+                                                cellContent = `<span title="${escapeHtml(strValue)}">${escapeHtml(strValue.substring(0, 50))}...</span>`;
+                                            } else {
+                                                cellContent = escapeHtml(strValue);
+                                            }
+                                        }
+                                    } else {
+                                        cellClass += ' text-gray-900';
+                                        cellContent = escapeHtml(String(value));
+                                    }
+                                }
+
+                                td.className = cellClass;
+                                td.innerHTML = cellContent;
                                 tr.appendChild(td);
                             });
 
@@ -1853,30 +1923,116 @@
                         document.getElementById('preview-row-count').textContent = preview.rows.length;
                     }
 
-                    // カラム統計情報を表示
+                    // カラム統計情報を表示（HuggingFace風）
                     if (preview.statistics) {
                         const statsSection = document.getElementById('column-stats-section');
                         const statsGrid = document.getElementById('column-stats-grid');
+                        const columnCountBadge = document.getElementById('column-count-badge');
                         statsGrid.innerHTML = '';
+
+                        const totalRows = preview.total_rows || preview.rows.length;
+                        const columnCount = Object.keys(preview.statistics).length;
+                        columnCountBadge.innerHTML = `<i class="fas fa-columns mr-1"></i>${columnCount} カラム`;
 
                         Object.keys(preview.statistics).forEach(col => {
                             const stats = preview.statistics[col];
                             const statCard = document.createElement('div');
-                            statCard.className = 'bg-gray-50 border border-gray-200 rounded p-3';
+
+                            // データ型に応じた色とアイコン
+                            let typeColor = 'text-gray-600';
+                            let typeIcon = 'fa-question';
+                            let typeBgColor = 'bg-gray-50';
+
+                            const typeStr = stats.type.toLowerCase();
+                            if (typeStr.includes('int') || typeStr.includes('float')) {
+                                typeColor = 'text-blue-600';
+                                typeIcon = 'fa-hashtag';
+                                typeBgColor = 'bg-blue-50';
+                            } else if (typeStr.includes('object') || typeStr.includes('string')) {
+                                typeColor = 'text-green-600';
+                                typeIcon = 'fa-font';
+                                typeBgColor = 'bg-green-50';
+                            } else if (typeStr.includes('bool')) {
+                                typeColor = 'text-purple-600';
+                                typeIcon = 'fa-toggle-on';
+                                typeBgColor = 'bg-purple-50';
+                            } else if (typeStr.includes('datetime')) {
+                                typeColor = 'text-orange-600';
+                                typeIcon = 'fa-calendar';
+                                typeBgColor = 'bg-orange-50';
+                            }
+
+                            // NULL率とユニーク率の計算
+                            const nullRate = totalRows > 0 ? (stats.null_count / totalRows * 100).toFixed(1) : 0;
+                            const uniqueRate = totalRows > 0 ? (stats.unique_count / totalRows * 100).toFixed(1) : 0;
+
+                            statCard.className = `${typeBgColor} border-2 border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow`;
 
                             let statsHtml = `
-                                <div class="font-semibold text-sm text-gray-800 mb-2">${escapeHtml(col)}</div>
-                                <div class="text-xs text-gray-600 space-y-1">
-                                    <div><span class="font-medium">型:</span> ${escapeHtml(stats.type)}</div>
-                                    <div><span class="font-medium">NULL:</span> ${stats.null_count}</div>
-                                    <div><span class="font-medium">ユニーク:</span> ${stats.unique_count}</div>
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="font-bold text-sm text-gray-800 truncate flex-1" title="${escapeHtml(col)}">${escapeHtml(col)}</div>
+                                    <div class="ml-2 ${typeColor} flex items-center">
+                                        <i class="fas ${typeIcon} text-lg"></i>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-2 text-xs">
+                                    <!-- データ型 -->
+                                    <div class="flex items-center justify-between py-1 px-2 bg-white rounded">
+                                        <span class="font-medium text-gray-600">型</span>
+                                        <span class="${typeColor} font-semibold">${escapeHtml(stats.type)}</span>
+                                    </div>
+
+                                    <!-- NULL値 -->
+                                    <div class="py-1">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-medium text-gray-600">NULL値</span>
+                                            <span class="text-gray-800 font-semibold">${stats.null_count} <span class="text-gray-500">(${nullRate}%)</span></span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-red-500 h-2 rounded-full" style="width: ${nullRate}%"></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- ユニーク値 -->
+                                    <div class="py-1">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-medium text-gray-600">ユニーク</span>
+                                            <span class="text-gray-800 font-semibold">${stats.unique_count} <span class="text-gray-500">(${uniqueRate}%)</span></span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-green-500 h-2 rounded-full" style="width: ${Math.min(uniqueRate, 100)}%"></div>
+                                        </div>
+                                    </div>
                             `;
 
+                            // 数値型の統計情報
                             if (stats.min !== undefined) {
                                 statsHtml += `
-                                    <div><span class="font-medium">最小:</span> ${stats.min !== null ? stats.min.toFixed(2) : 'N/A'}</div>
-                                    <div><span class="font-medium">最大:</span> ${stats.max !== null ? stats.max.toFixed(2) : 'N/A'}</div>
-                                    <div><span class="font-medium">平均:</span> ${stats.mean !== null ? stats.mean.toFixed(2) : 'N/A'}</div>
+                                    <div class="mt-3 pt-2 border-t border-gray-300">
+                                        <div class="font-semibold text-gray-700 mb-2 flex items-center">
+                                            <i class="fas fa-chart-line mr-1 text-xs"></i>
+                                            数値統計
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div class="py-1 px-2 bg-white rounded">
+                                                <div class="text-gray-500 text-[10px]">最小値</div>
+                                                <div class="font-bold text-gray-800">${stats.min !== null ? stats.min.toFixed(2) : 'N/A'}</div>
+                                            </div>
+                                            <div class="py-1 px-2 bg-white rounded">
+                                                <div class="text-gray-500 text-[10px]">最大値</div>
+                                                <div class="font-bold text-gray-800">${stats.max !== null ? stats.max.toFixed(2) : 'N/A'}</div>
+                                            </div>
+                                            <div class="py-1 px-2 bg-white rounded">
+                                                <div class="text-gray-500 text-[10px]">平均値</div>
+                                                <div class="font-bold text-gray-800">${stats.mean !== null ? stats.mean.toFixed(2) : 'N/A'}</div>
+                                            </div>
+                                            <div class="py-1 px-2 bg-white rounded">
+                                                <div class="text-gray-500 text-[10px]">中央値</div>
+                                                <div class="font-bold text-gray-800">${stats.median !== null ? stats.median.toFixed(2) : 'N/A'}</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 `;
                             }
 
@@ -2051,15 +2207,29 @@
 
                 <!-- データプレビュー -->
                 <div id="data-preview-section" class="hidden">
-                    <h4 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                        <i class="fas fa-table text-blue-500 mr-2"></i>
-                        データプレビュー: <span id="preview-file-name" class="ml-2 text-blue-600"></span>
-                    </h4>
+                    <div class="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+                        <h4 class="text-lg font-bold text-gray-800 mb-1 flex items-center">
+                            <i class="fas fa-table text-blue-500 mr-2 text-xl"></i>
+                            データプレビュー
+                        </h4>
+                        <div class="flex items-center mt-2">
+                            <i class="fas fa-file text-blue-600 mr-2 text-sm"></i>
+                            <span id="preview-file-name" class="text-blue-700 font-semibold"></span>
+                        </div>
+                    </div>
 
                     <!-- カラム統計情報 -->
-                    <div id="column-stats-section" class="hidden mb-4">
-                        <h5 class="text-md font-semibold text-gray-700 mb-3">カラム統計</h5>
-                        <div id="column-stats-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div id="column-stats-section" class="hidden mb-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h5 class="text-lg font-bold text-gray-800 flex items-center">
+                                <i class="fas fa-chart-bar text-purple-500 mr-2"></i>
+                                カラム統計
+                            </h5>
+                            <span class="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full" id="column-count-badge">
+                                <!-- 動的に生成 -->
+                            </span>
+                        </div>
+                        <div id="column-stats-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             <!-- 動的に生成 -->
                         </div>
                     </div>
