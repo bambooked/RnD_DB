@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理者ダッシュボード | R&D DB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+    <header class="bg-slate-900 text-white shadow-lg">
+        <div class="max-w-6xl mx-auto px-4 py-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h1 class="text-3xl font-bold">管理者ダッシュボード</h1>
+                <p class="text-slate-300 mt-1">システム状態とメンテナンス操作をまとめて確認</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="/" class="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 transition px-4 py-2 rounded-md">
+                    <i class="fas fa-arrow-left"></i>
+                    <span>アプリへ戻る</span>
+                </a>
+                <button id="refresh-overview" class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 transition px-4 py-2 rounded-md">
+                    <i class="fas fa-rotate"></i>
+                    <span>最新情報に更新</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8 space-y-8">
+        <!-- 統計カード -->
+        <section>
+            <h2 class="text-xl font-semibold text-slate-700 mb-3">データベース概況</h2>
+            <div class="grid gap-6 md:grid-cols-3">
+                <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-slate-500">論文</p>
+                            <p id="stat-papers" class="text-3xl font-bold text-slate-800">-</p>
+                        </div>
+                        <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                            <i class="fas fa-file-lines"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-slate-500">ポスター</p>
+                            <p id="stat-posters" class="text-3xl font-bold text-slate-800">-</p>
+                        </div>
+                        <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                            <i class="fas fa-chalkboard"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-slate-500">データセット</p>
+                            <p id="stat-datasets" class="text-3xl font-bold text-slate-800">-</p>
+                        </div>
+                        <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                            <i class="fas fa-database"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- システム状態 -->
+        <section>
+            <h2 class="text-xl font-semibold text-slate-700 mb-3">システム状態</h2>
+            <div class="bg-white rounded-xl shadow-md border border-slate-100">
+                <div class="divide-y divide-slate-100">
+                    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-6 py-4">
+                        <div class="flex items-center gap-3 text-slate-700">
+                            <i class="fas fa-database text-blue-500"></i>
+                            <span>データベース</span>
+                        </div>
+                        <span id="status-database" class="status-pill bg-slate-200 text-slate-700">確認中...</span>
+                    </div>
+                    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-6 py-4">
+                        <div class="flex items-center gap-3 text-slate-700">
+                            <i class="fab fa-google-drive text-green-500"></i>
+                            <span>Google Drive 認証</span>
+                        </div>
+                        <span id="status-google-auth" class="status-pill bg-slate-200 text-slate-700">確認中...</span>
+                    </div>
+                    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-6 py-4">
+                        <div class="flex items-center gap-3 text-slate-700">
+                            <i class="fas fa-key text-emerald-500"></i>
+                            <span>アプリ認証機構</span>
+                        </div>
+                        <span id="status-auth" class="status-pill bg-slate-200 text-slate-700">確認中...</span>
+                    </div>
+                    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-6 py-4">
+                        <div class="flex items-center gap-3 text-slate-700">
+                            <i class="fas fa-vector-square text-indigo-500"></i>
+                            <span>ベクトル検索</span>
+                        </div>
+                        <span id="status-vector" class="status-pill bg-slate-200 text-slate-700">確認中...</span>
+                    </div>
+                    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-6 py-4">
+                        <div class="flex items-center gap-3 text-slate-700">
+                            <i class="fas fa-robot text-orange-500"></i>
+                            <span>OpenRouter モデル</span>
+                        </div>
+                        <span id="status-models" class="status-pill bg-slate-200 text-slate-700">確認中...</span>
+                    </div>
+                </div>
+            </div>
+            <p id="overview-updated" class="text-xs text-slate-500 mt-2">-</p>
+        </section>
+
+        <!-- メンテナンス操作 -->
+        <section>
+            <h2 class="text-xl font-semibold text-slate-700 mb-3">メンテナンス操作</h2>
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                <div class="grid gap-4 md:grid-cols-2">
+                    <button id="action-vector-index" class="flex items-center gap-3 w-full border border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50 transition rounded-lg px-4 py-3 text-left">
+                        <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                            <i class="fas fa-sync"></i>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-slate-800">ベクトルインデックス再構築</p>
+                            <p class="text-sm text-slate-500">データベースの全ドキュメントを再度埋め込み</p>
+                        </div>
+                    </button>
+                    <button id="action-model-sync" class="flex items-center gap-3 w-full border border-amber-200 hover:border-amber-300 hover:bg-amber-50 transition rounded-lg px-4 py-3 text-left">
+                        <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                            <i class="fas fa-cloud-download-alt"></i>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-slate-800">OpenRouter モデル同期</p>
+                            <p class="text-sm text-slate-500">利用可能なモデル一覧を最新化</p>
+                        </div>
+                    </button>
+                </div>
+                <div class="mt-6 bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-600" id="action-log">
+                    操作結果がここに表示されます。
+                </div>
+            </div>
+        </section>
+
+        <!-- 詳細情報 -->
+        <section class="grid gap-6 md:grid-cols-3">
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                <h3 class="text-lg font-semibold text-slate-700 mb-3">ベクトル検索の状態</h3>
+                <dl class="space-y-2 text-sm text-slate-600" id="vector-details">
+                    <div>
+                        <dt class="font-medium text-slate-500">プロバイダ</dt>
+                        <dd>-</dd>
+                    </div>
+                </dl>
+            </div>
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                <h3 class="text-lg font-semibold text-slate-700 mb-3">OpenRouter モデル</h3>
+                <dl class="space-y-2 text-sm text-slate-600" id="model-details">
+                    <div>
+                        <dt class="font-medium text-slate-500">登録モデル数</dt>
+                        <dd>-</dd>
+                    </div>
+                </dl>
+                <div class="mt-4 text-xs text-slate-500">
+                    モデル同期は 24 時間ごとに自動実行されます。必要に応じて上のボタンから即時更新できます。
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                <h3 class="text-lg font-semibold text-slate-700 mb-3">LLM 利用状況</h3>
+                <dl class="space-y-2 text-sm text-slate-600" id="llm-details">
+                    <div>
+                        <dt class="font-medium text-slate-500">総呼び出し数</dt>
+                        <dd>-</dd>
+                    </div>
+                </dl>
+                <div class="mt-4 text-xs text-slate-500">
+                    OpenRouterのレスポンスに含まれるトークン使用量を集計しています。
+                </div>
+            </div>
+        </section>
+
+        <!-- 最近の更新 -->
+        <section>
+            <h2 class="text-xl font-semibold text-slate-700 mb-3">最近の更新</h2>
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                <ul id="recent-items" class="space-y-4 text-sm text-slate-700">
+                    <li>読み込み中...</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- メンテナンス履歴 -->
+        <section>
+            <h2 class="text-xl font-semibold text-slate-700 mb-3">メンテナンス履歴</h2>
+            <div class="bg-white rounded-xl shadow-md p-6 border border-slate-100">
+                <ul id="maintenance-events" class="space-y-4 text-sm text-slate-700">
+                    <li>履歴を読み込み中...</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const overviewData = {{ overview | tojson }};
+
+        function formatTimestamp(ts) {
+            if (!ts) return "日時情報なし";
+            try {
+                const date = new Date(ts);
+                return date.toLocaleString("ja-JP", { hour12: false });
+            } catch (e) {
+                return ts;
+            }
+        }
+
+        function setStatus(elementId, isOk, labelWhenTrue, labelWhenFalse) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            if (isOk) {
+                el.textContent = labelWhenTrue || "稼働中";
+                el.className = "status-pill bg-emerald-100 text-emerald-700";
+            } else {
+                el.textContent = labelWhenFalse || "要確認";
+                el.className = "status-pill bg-rose-100 text-rose-700";
+            }
+        }
+
+        function renderVectorDetails(status) {
+            const container = document.getElementById("vector-details");
+            if (!container) return;
+            const enabled = status && status.enabled;
+            const provider = status && status.provider ? status.provider : "未設定";
+            const embedding = status && status.embedding_model ? status.embedding_model : "-";
+            const dimension = status && status.vector_dimension ? status.vector_dimension : "-";
+            const error = status && status.error ? status.error : null;
+
+            container.innerHTML = `
+                <div>
+                    <dt class="font-medium text-slate-500">有効状態</dt>
+                    <dd>${enabled ? "有効" : "無効"}</dd>
+                </div>
+                <div>
+                    <dt class="font-medium text-slate-500">プロバイダ</dt>
+                    <dd>${provider}</dd>
+                </div>
+                <div>
+                    <dt class="font-medium text-slate-500">埋め込みモデル</dt>
+                    <dd>${embedding}</dd>
+                </div>
+                <div>
+                    <dt class="font-medium text-slate-500">ベクトル次元</dt>
+                    <dd>${dimension}</dd>
+                </div>
+                ${error ? `<div><dt class="font-medium text-rose-500">エラー</dt><dd class="text-rose-600">${error}</dd></div>` : ""}
+            `;
+        }
+
+        function renderModelDetails(modelStats) {
+            const container = document.getElementById("model-details");
+            if (!container) return;
+            const total = modelStats && typeof modelStats.total === "number" ? modelStats.total : "-";
+            const needsSync = modelStats && modelStats.needs_sync;
+            const error = modelStats && modelStats.error;
+
+            container.innerHTML = `
+                <div>
+                    <dt class="font-medium text-slate-500">登録モデル数</dt>
+                    <dd>${total}</dd>
+                </div>
+                <div>
+                    <dt class="font-medium text-slate-500">最新化の必要性</dt>
+                    <dd>${needsSync ? "更新が必要" : "最新です"}</dd>
+                </div>
+                ${error ? `<div><dt class="font-medium text-rose-500">エラー</dt><dd class="text-rose-600">${error}</dd></div>` : ""}
+            `;
+        }
+
+        function renderLLMUsage(usage) {
+            const container = document.getElementById("llm-details");
+            if (!container) return;
+            if (!usage || Object.keys(usage).length === 0) {
+                container.innerHTML = "<div><dt class=\"text-sm text-slate-500\">データなし</dt></div>";
+                return;
+            }
+
+            const totalCalls = usage.total_calls ?? 0;
+            const promptTokens = usage.total_prompt_tokens ?? 0;
+            const completionTokens = usage.total_completion_tokens ?? 0;
+            const totalTokens = usage.total_tokens ?? (promptTokens + completionTokens);
+            const perModel = usage.per_model ?? {};
+
+            let perModelHtml = "";
+            const modelEntries = Object.entries(perModel);
+            if (modelEntries.length) {
+                perModelHtml = `
+                    <div>
+                        <dt class="font-medium text-slate-500">モデル別内訳</dt>
+                        <dd class="space-y-1">
+                            ${modelEntries.map(([model, stats]) => {
+                                const calls = stats.calls ?? 0;
+                                const tokens = stats.total_tokens ?? ((stats.prompt_tokens || 0) + (stats.completion_tokens || 0));
+                                return `<div class=\"flex items-center justify-between bg-slate-50 px-2 py-1 rounded\"><span class=\"text-xs text-slate-500\">${model}</span><span class=\"text-xs text-slate-600\">${calls} 回 / ${tokens} トークン</span></div>`;
+                            }).join("")}
+                        </dd>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = `
+                <div>
+                    <dt class="font-medium text-slate-500">総呼び出し数</dt>
+                    <dd>${totalCalls}</dd>
+                </div>
+                <div>
+                    <dt class="font-medium text-slate-500">プロンプトトークン</dt>
+                    <dd>${promptTokens}</dd>
+                </div>
+                <div>
+                    <dt class="font-medium text-slate-500">出力トークン</dt>
+                    <dd>${completionTokens}</dd>
+                </div>
+                <div>
+                    <dt class="font-medium text-slate-500">合計トークン</dt>
+                    <dd>${totalTokens}</dd>
+                </div>
+                ${perModelHtml}
+            `;
+        }
+
+        function renderRecentItems(items) {
+            const container = document.getElementById("recent-items");
+            if (!container) return;
+
+            if (!items || items.length === 0) {
+                container.innerHTML = "<li class=\"text-slate-500\">最近の更新情報が見つかりませんでした。</li>";
+                return;
+            }
+
+            const badgeColors = {
+                paper: "bg-blue-100 text-blue-700",
+                poster: "bg-purple-100 text-purple-700",
+                dataset: "bg-amber-100 text-amber-700"
+            };
+
+            container.innerHTML = items.map(item => {
+                const badgeClass = badgeColors[item.type] || "bg-slate-100 text-slate-700";
+                const title = item.title || "名称未設定";
+                const detail = item.detail ? `<p class=\"text-xs text-slate-500 mt-1\">${item.detail}</p>` : "";
+                const url = item.drive_url ? `<a href=\"${item.drive_url}\" target=\"_blank\" class=\"text-xs text-blue-600 hover:underline\">Google Drive を開く</a>` : "";
+                const timestamp = formatTimestamp(item.timestamp);
+                const extra = [];
+                if (item.file_count !== undefined) {
+                    extra.push(`ファイル数: ${item.file_count}`);
+                }
+                if (item.total_size !== undefined) {
+                    extra.push(`合計サイズ: ${item.total_size}`);
+                }
+                if (item.file_name) {
+                    extra.push(`ファイル名: ${item.file_name}`);
+                }
+                const extraContent = extra.length ? `<p class=\"text-xs text-slate-400 mt-1\">${extra.join(" / ")}</p>` : "";
+
+                return `
+                    <li class=\"border border-slate-100 rounded-lg p-4 bg-slate-50\">
+                        <div class=\"flex flex-col gap-1 md:flex-row md:items-center md:justify-between\">
+                            <div class=\"flex items-center gap-2\">
+                                <span class=\"px-2 py-1 rounded-full text-xs font-semibold ${badgeClass}\">${item.type}</span>
+                                <span class=\"font-semibold text-slate-700\">${title}</span>
+                            </div>
+                            <span class=\"text-xs text-slate-500\">${timestamp}</span>
+                        </div>
+                        ${detail}
+                        ${extraContent}
+                        ${url}
+                    </li>
+                `;
+            }).join("\n");
+        }
+
+        function renderMaintenanceEvents(events) {
+            const container = document.getElementById("maintenance-events");
+            if (!container) return;
+            if (!events || events.length === 0) {
+                container.innerHTML = "<li class=\"text-slate-500\">メンテナンス履歴はまだありません。</li>";
+                return;
+            }
+
+            container.innerHTML = events.map(event => {
+                const statusClass = event.status === "success" ? "bg-emerald-100 text-emerald-700" : event.status === "partial" ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700";
+                const timestamp = formatTimestamp(event.timestamp);
+                const message = event.message || "詳細なし";
+                const detail = event.details ? `<pre class=\"mt-2 bg-slate-50 border border-slate-200 rounded p-2 text-xs text-slate-600 overflow-x-auto\">${JSON.stringify(event.details, null, 2)}</pre>` : "";
+                return `
+                    <li class=\"border border-slate-100 rounded-lg p-4 bg-white\">
+                        <div class=\"flex flex-col gap-2 md:flex-row md:items-center md:justify-between\">
+                            <div class=\"flex items-center gap-2\">
+                                <span class=\"px-2 py-1 rounded-full text-xs font-semibold ${statusClass}\">${event.type}</span>
+                                <span class=\"text-sm font-semibold text-slate-700\">${message}</span>
+                            </div>
+                            <span class=\"text-xs text-slate-500\">${timestamp}</span>
+                        </div>
+                        ${detail}
+                    </li>
+                `;
+            }).join("\n");
+        }
+
+        function renderOverview(data) {
+            if (!data) return;
+            document.getElementById("stat-papers").textContent = data.stats?.papers ?? "-";
+            document.getElementById("stat-posters").textContent = data.stats?.posters ?? "-";
+            document.getElementById("stat-datasets").textContent = data.stats?.datasets ?? "-";
+
+            setStatus("status-database", data.system_status?.database !== false, "稼働中", "停止中");
+            setStatus("status-google-auth", data.system_status?.google_drive_connected, "連携済み", "未連携");
+            setStatus("status-auth", data.system_status?.auth, "有効", "無効");
+            setStatus("status-vector", data.vector_status?.enabled, "有効", "無効");
+            setStatus("status-models", (data.model_stats?.total ?? 0) > 0, "登録済み", "未登録");
+
+            renderVectorDetails(data.vector_status);
+            renderModelDetails(data.model_stats);
+            renderLLMUsage(data.llm_usage);
+            renderRecentItems(data.recent_items);
+            renderMaintenanceEvents(data.maintenance_events);
+
+            const updatedLabel = document.getElementById("overview-updated");
+            if (updatedLabel) {
+                updatedLabel.textContent = `最終更新: ${formatTimestamp(data.generated_at)}`;
+            }
+        }
+
+        async function callAction(url, options = {}) {
+            const log = document.getElementById("action-log");
+            if (log) {
+                log.textContent = "実行中...";
+                log.className = "mt-6 bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-600";
+            }
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || data.error || response.statusText);
+                }
+                const message = data.message || JSON.stringify(data);
+                if (log) {
+                    log.textContent = message;
+                    log.className = "mt-6 bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-700";
+                }
+                return data;
+            } catch (error) {
+                if (log) {
+                    log.textContent = `エラー: ${error.message}`;
+                    log.className = "mt-6 bg-rose-50 border border-rose-200 rounded-lg p-4 text-sm text-rose-700";
+                }
+                throw error;
+            }
+        }
+
+        async function refreshOverview() {
+            try {
+                const response = await fetch("/api/admin/overview");
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || "情報の取得に失敗しました");
+                }
+                renderOverview(data);
+            } catch (error) {
+                console.error(error);
+                const updatedLabel = document.getElementById("overview-updated");
+                if (updatedLabel) {
+                    updatedLabel.textContent = `更新失敗: ${error.message}`;
+                    updatedLabel.classList.add("text-rose-500");
+                }
+            }
+        }
+
+        document.getElementById("refresh-overview")?.addEventListener("click", refreshOverview);
+
+        document.getElementById("action-vector-index")?.addEventListener("click", async () => {
+            try {
+                await callAction("/api/vector/index", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+                await refreshOverview();
+            } catch (e) {
+                console.error(e);
+            }
+        });
+
+        document.getElementById("action-model-sync")?.addEventListener("click", async () => {
+            try {
+                await callAction("/api/models/sync", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+                await refreshOverview();
+            } catch (e) {
+                console.error(e);
+            }
+        });
+
+        // 初期描画
+        renderOverview(overviewData);
+    </script>
+</body>
+</html>

@@ -12,6 +12,7 @@ from tools.config import (
     OPENROUTER_REFERER,
     OPENROUTER_TITLE,
 )
+from services.admin_metrics import admin_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,17 @@ class OpenRouterClient:
                 )
                 response.raise_for_status()
                 data = response.json()
+                usage = data.get("usage") if isinstance(data, dict) else None
+                if usage:
+                    try:
+                        admin_metrics.record_llm_usage(
+                            model=payload.get("model", self.model),
+                            prompt_tokens=int(usage.get("prompt_tokens", 0) or 0),
+                            completion_tokens=int(usage.get("completion_tokens", 0) or 0),
+                            total_tokens=int(usage.get("total_tokens", 0) or 0),
+                        )
+                    except Exception as metrics_error:  # pylint: disable=broad-except
+                        logger.warning("LLM使用量記録に失敗: %s", metrics_error)
                 text = self._extract_text(data)
                 if text:
                     return text.strip()

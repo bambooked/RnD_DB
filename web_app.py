@@ -36,7 +36,7 @@ from agent.source.database.connection import db_connection
 from agent.source.database.new_repository import (
     DatasetRepository, PaperRepository, PosterRepository,
     PaperDatasetRelationRepository, PosterDatasetRelationRepository,
-    DatasetFileRepository
+    DatasetFileRepository, OpenRouterModelRepository
 )
 from agent.source.database.new_models import PaperDatasetRelation, PosterDatasetRelation
 from agent.source.database.new_models import Dataset, Paper, Poster, DatasetFile
@@ -45,6 +45,7 @@ from agent.source.advisor.dataset_advisor import DatasetAdvisor
 from agent.source.integrations.looker_export import LookerDataExporter
 from agent.source.analyzer.openrouter_client import OpenRouterClient
 from agent.source.integrations.openrouter_sync import OpenRouterModelSync
+from services.admin_metrics import admin_metrics
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)
@@ -87,6 +88,7 @@ poster_repo = PosterRepository()
 paper_dataset_rel_repo = PaperDatasetRelationRepository()
 poster_dataset_rel_repo = PosterDatasetRelationRepository()
 dataset_file_repo = DatasetFileRepository()
+model_repo = OpenRouterModelRepository()
 
 # OAuth セッション管理（本番環境ではRedisなどを使用すべき）
 oauth_sessions = {}
@@ -137,6 +139,141 @@ def save_credentials(creds):
 
 # 起動時に認証情報を読み込む
 load_credentials()
+
+
+def build_admin_overview(limit: int = 6) -> Dict[str, Any]:
+    """管理者ダッシュボード向けの概要情報を生成"""
+    papers: List[Paper] = []
+    posters: List[Poster] = []
+    datasets: List[Dataset] = []
+    try:
+        papers = paper_repo.find_all()
+        posters = poster_repo.find_all()
+        datasets = dataset_repo.find_all()
+        paper_count = len(papers)
+        poster_count = len(posters)
+        dataset_count = len(datasets)
+    except Exception as e:
+        logger.error(f"統計情報取得エラー: {e}")
+        paper_count = poster_count = dataset_count = 0
+        papers = posters = datasets = []
+
+    system_status = {
+        "google_drive": google_drive.is_enabled() if google_drive else False,
+        "google_drive_connected": 'default' in user_credentials,
+        "auth": auth_manager.is_enabled(),
+        "database": True,
+        "vector_search": vector_engine.is_enabled()
+    }
+
+    try:
+        vector_status = vector_indexer.get_index_stats()
+    except Exception as e:
+        logger.error(f"ベクトル検索状態取得エラー: {e}")
+        vector_status = {
+            "enabled": False,
+            "error": str(e)
+        }
+
+    model_stats: Dict[str, Any] = {
+        "total": 0,
+        "needs_sync": False
+    }
+    try:
+        model_stats["total"] = model_repo.count()
+        model_stats["needs_sync"] = model_sync.should_update()
+    except Exception as e:
+        logger.error(f"モデル統計情報取得エラー: {e}")
+        model_stats["error"] = str(e)
+
+    recent_items = []
+
+    metrics_snapshot = admin_metrics.get_snapshot()
+    llm_usage = metrics_snapshot.get("llm_usage", {}) if isinstance(metrics_snapshot, dict) else {}
+    maintenance_events = metrics_snapshot.get("events", []) if isinstance(metrics_snapshot, dict) else []
+
+    def build_timestamped_entry(item_type: str, title: str, detail: Optional[str], url: Optional[str], dt_obj: Optional[datetime], extra: Optional[Dict[str, Any]] = None):
+        entry = {
+            "type": item_type,
+            "title": title,
+            "detail": detail,
+            "drive_url": url,
+            "_timestamp": dt_obj
+        }
+        if extra:
+            entry.update(extra)
+        recent_items.append(entry)
+
+    try:
+        for dataset in datasets[:limit]:
+            timestamp = dataset.updated_at or dataset.created_at
+            build_timestamped_entry(
+                "dataset",
+                dataset.name,
+                dataset.description,
+                dataset.drive_url,
+                timestamp,
+                {
+                    "file_count": dataset.file_count,
+                    "total_size": dataset.total_size
+                }
+            )
+    except Exception as e:
+        logger.error(f"データセット履歴取得エラー: {e}")
+
+    try:
+        for paper in papers[:limit]:
+            timestamp = paper.updated_at or paper.indexed_at or paper.created_at
+            build_timestamped_entry(
+                "paper",
+                paper.title or paper.file_name,
+                paper.authors,
+                paper.drive_url,
+                timestamp,
+                {
+                    "file_name": paper.file_name
+                }
+            )
+    except Exception as e:
+        logger.error(f"論文履歴取得エラー: {e}")
+
+    try:
+        for poster in posters[:limit]:
+            timestamp = poster.updated_at or poster.indexed_at or poster.created_at
+            build_timestamped_entry(
+                "poster",
+                poster.title or poster.file_name,
+                poster.authors,
+                poster.drive_url,
+                timestamp,
+                {
+                    "file_name": poster.file_name
+                }
+            )
+    except Exception as e:
+        logger.error(f"ポスター履歴取得エラー: {e}")
+
+    recent_items = [item for item in recent_items if item.get("_timestamp")]
+    recent_items.sort(key=lambda x: x.get("_timestamp"), reverse=True)
+    recent_items = recent_items[:limit]
+    for item in recent_items:
+        timestamp = item.pop("_timestamp", None)
+        item["timestamp"] = timestamp.isoformat() if timestamp else None
+
+    return {
+        "stats": {
+            "papers": paper_count,
+            "posters": poster_count,
+            "datasets": dataset_count
+        },
+        "system_status": system_status,
+        "vector_status": vector_status,
+        "model_stats": model_stats,
+        "recent_items": recent_items,
+        "llm_usage": llm_usage,
+        "maintenance_events": list(reversed(maintenance_events[-limit:])) if maintenance_events else [],
+        "generated_at": datetime.now().isoformat()
+    }
 
 # バックグラウンドタスク管理
 import threading
@@ -257,18 +394,28 @@ async def index(request: Request):
         "auth": auth_manager.is_enabled(),
         "database": True
     }
-    
+
     # 統計情報取得
     stats = {
         "papers": len(paper_repo.find_all()),
         "posters": len(poster_repo.find_all()),
         "datasets": len(dataset_repo.find_all())
     }
-    
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "system_status": system_status,
         "stats": stats
+    })
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    """管理者ダッシュボードページ"""
+    overview = build_admin_overview()
+    return templates.TemplateResponse("admin.html", {
+        "request": request,
+        "overview": overview
     })
 
 @app.get("/api/status")
@@ -284,6 +431,17 @@ async def get_system_status():
             "datasets": len(dataset_repo.find_all())
         }
     })
+
+
+@app.get("/api/admin/overview")
+async def get_admin_overview():
+    """管理者ダッシュボード向け概要情報API"""
+    try:
+        overview = build_admin_overview()
+        return JSONResponse(overview)
+    except Exception as e:
+        logger.error(f"管理者概要情報APIエラー: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/sync/google-drive", response_model=SyncResponse)
 async def sync_google_drive(request: GoogleDriveSyncRequest, background_tasks: BackgroundTasks):
@@ -308,6 +466,7 @@ async def perform_google_drive_sync(folder_type: str, folder_id: str):
     """Google Drive同期の実際の処理"""
     try:
         logger.info(f"Google Drive同期開始: {folder_type}, folder_id: {folder_id}")
+        source_folder_id = folder_id
 
         if 'default' not in user_credentials:
             logger.error("認証情報がありません")
@@ -395,7 +554,7 @@ async def perform_google_drive_sync(folder_type: str, folder_id: str):
                                 errors.append(f"{file['name']}: {str(e)}")
         
         logger.info(f"Google Drive同期完了: {files_processed}ファイル処理, {len(errors)}エラー")
-        
+
         # 統計情報を更新（キャッシュクリア効果）
         stats = {
             "papers": len(paper_repo.find_all()),
@@ -403,9 +562,31 @@ async def perform_google_drive_sync(folder_type: str, folder_id: str):
             "datasets": len(dataset_repo.find_all())
         }
         logger.info(f"同期後統計: 論文{stats['papers']}件, ポスター{stats['posters']}件, データセット{stats['datasets']}件")
-        
+
+        admin_metrics.record_event(
+            "drive_sync",
+            "success" if not errors else "partial",
+            f"Google Drive同期完了: {files_processed}件処理 (エラー{len(errors)}件)",
+            extra={
+                "folder_type": folder_type,
+                "folder_id": source_folder_id,
+                "files_processed": files_processed,
+                "error_count": len(errors),
+                "errors": errors[:10]
+            }
+        )
+
     except Exception as e:
         logger.error(f"Google Drive同期エラー: {e}")
+        admin_metrics.record_event(
+            "drive_sync",
+            "error",
+            f"Google Drive同期失敗: {str(e)}",
+            extra={
+                "folder_type": folder_type,
+                "folder_id": source_folder_id if 'source_folder_id' in locals() else folder_id
+            }
+        )
 
 async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) -> int:
     """datasetsフォルダ内のサブフォルダを処理"""
@@ -1451,22 +1632,42 @@ async def create_vector_index():
     """全ドキュメントのベクトルインデックスを作成"""
     try:
         if not vector_engine.is_enabled():
-            return JSONResponse({
+            response_data = {
                 'success': False,
                 'error': 'Vector search is not enabled. Set ENABLE_VECTOR_SEARCH=true in .env'
-            })
+            }
+            admin_metrics.record_event(
+                "vector_index",
+                "error",
+                "ベクトル検索が無効のため再構築をスキップ",
+                extra=response_data
+            )
+            return JSONResponse(response_data)
 
         result = vector_indexer.index_all_documents()
+        admin_metrics.record_event(
+            "vector_index",
+            "success" if result.get('success') else "error",
+            f"ベクトルインデックス再構築: {result.get('indexed_count', 0)}件処理",
+            extra=result
+        )
         return JSONResponse(result)
 
     except Exception as e:
         logger.error(f"Vector indexing error: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return JSONResponse({
+        response_data = {
             'success': False,
             'error': str(e)
-        })
+        }
+        admin_metrics.record_event(
+            "vector_index",
+            "error",
+            f"ベクトルインデックス再構築エラー: {str(e)}",
+            extra=response_data
+        )
+        return JSONResponse(response_data)
 
 
 @app.get("/api/vector/status")
@@ -1548,13 +1749,26 @@ async def sync_openrouter_models():
     """OpenRouterモデル一覧を手動で同期"""
     try:
         result = model_sync.sync_models()
+        admin_metrics.record_event(
+            "model_sync",
+            "success" if result.get('success') else "error",
+            result.get('message', 'OpenRouterモデル同期を実行しました'),
+            extra=result
+        )
         return JSONResponse(result)
     except Exception as e:
         logger.error(f"モデル同期エラー: {e}")
-        return JSONResponse({
+        response_data = {
             'success': False,
             'message': f"同期エラー: {str(e)}"
-        })
+        }
+        admin_metrics.record_event(
+            "model_sync",
+            "error",
+            f"OpenRouterモデル同期エラー: {str(e)}",
+            extra=response_data
+        )
+        return JSONResponse(response_data)
 
 
 if __name__ == "__main__":
