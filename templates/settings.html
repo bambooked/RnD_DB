@@ -1,12 +1,9 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>設定 | R&D DB</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% extends "base.html" %}
+
+{% block title %}設定 | R&D DB{% endblock %}
+{% block body_class %}bg-slate-100 min-h-screen{% endblock %}
+
+{% block styles %}
     <style>
         .status-pill {
             display: inline-flex;
@@ -17,9 +14,14 @@
             font-size: 0.75rem;
         }
     </style>
-</head>
-<body class="bg-slate-100 min-h-screen">
-    <header class="bg-slate-900 text-white shadow-lg">
+{% endblock %}
+
+{% block head_extra %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<header class="bg-slate-900 text-white shadow-lg">
         <div class="max-w-6xl mx-auto px-4 py-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
                 <h1 class="text-3xl font-bold">設定</h1>
@@ -280,8 +282,10 @@
             </div>
         </section>
     </main>
+{% endblock %}
 
-    <script>
+{% block scripts %}
+<script>
         const overviewData = {{ overview | tojson }};
 
         function formatTimestamp(ts) {
@@ -780,5 +784,4 @@
             refreshBtn.addEventListener('click', refreshCharts);
         }
     </script>
-</body>
-</html>
+{% endblock %}

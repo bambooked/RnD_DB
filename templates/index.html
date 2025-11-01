@@ -1,142 +1,9 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>R&D DB</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
 
-    <!-- Markdown レンダリング用ライブラリ -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <style>
-        .gradient-bg {
-            background: #1e293b;
-        }
-        .card-hover:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        }
-        .loading {
-            display: none;
-        }
-        .loading.show {
-            display: block;
-        }
+{% block title %}R&D DB{% endblock %}
 
-        /* Markdown コンテンツ用スタイル */
-        .markdown-content {
-            line-height: 1.6;
-        }
-        .markdown-content h1 {
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-top: 1rem;
-            margin-bottom: 0.75rem;
-            color: #1f2937;
-            border-bottom: 2px solid #e5e7eb;
-            padding-bottom: 0.25rem;
-        }
-        .markdown-content h2 {
-            font-size: 1.25rem;
-            font-weight: bold;
-            margin-top: 0.875rem;
-            margin-bottom: 0.625rem;
-            color: #374151;
-        }
-        .markdown-content h3 {
-            font-size: 1.125rem;
-            font-weight: 600;
-            margin-top: 0.75rem;
-            margin-bottom: 0.5rem;
-            color: #4b5563;
-        }
-        .markdown-content p {
-            margin-bottom: 0.75rem;
-        }
-        .markdown-content ul, .markdown-content ol {
-            margin-left: 1.5rem;
-            margin-bottom: 0.75rem;
-        }
-        .markdown-content ul {
-            list-style-type: disc;
-        }
-        .markdown-content ol {
-            list-style-type: decimal;
-        }
-        .markdown-content li {
-            margin-bottom: 0.25rem;
-        }
-        .markdown-content code {
-            background-color: #f3f4f6;
-            padding: 0.125rem 0.375rem;
-            border-radius: 0.25rem;
-            font-family: 'Courier New', monospace;
-            font-size: 0.875rem;
-            color: #dc2626;
-        }
-        .markdown-content pre {
-            background-color: #f6f8fa;
-            border: 1px solid #e1e4e8;
-            border-radius: 0.375rem;
-            padding: 1rem;
-            overflow-x: auto;
-            margin-bottom: 0.75rem;
-        }
-        .markdown-content pre code {
-            background-color: transparent;
-            padding: 0;
-            color: inherit;
-            font-size: 0.875rem;
-            line-height: 1.5;
-        }
-        .markdown-content blockquote {
-            border-left: 4px solid #d1d5db;
-            padding-left: 1rem;
-            margin-left: 0;
-            margin-bottom: 0.75rem;
-            color: #6b7280;
-            font-style: italic;
-        }
-        .markdown-content table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 0.75rem;
-        }
-        .markdown-content th, .markdown-content td {
-            border: 1px solid #e5e7eb;
-            padding: 0.5rem;
-            text-align: left;
-        }
-        .markdown-content th {
-            background-color: #f9fafb;
-            font-weight: 600;
-        }
-        .markdown-content a {
-            color: #2563eb;
-            text-decoration: underline;
-        }
-        .markdown-content a:hover {
-            color: #1d4ed8;
-        }
-        .markdown-content strong {
-            font-weight: bold;
-        }
-        .markdown-content em {
-            font-style: italic;
-        }
-        .markdown-content hr {
-            border: none;
-            border-top: 1px solid #e5e7eb;
-            margin: 1rem 0;
-        }
-    </style>
-</head>
-<body class="bg-gray-50">
-    <!-- ヘッダー -->
+{% block content %}
+<!-- ヘッダー -->
     <header class="gradient-bg text-white shadow-lg">
         <div class="container mx-auto px-4 py-6">
             <div class="flex items-center justify-between">
@@ -344,8 +211,240 @@
 
     </main>
 
-    <!-- JavaScript -->
-    <script>
+<!-- Google Drive同期モーダル -->
+    <div id="sync-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="flex items-center justify-between p-6 border-b">
+                <h3 class="text-xl font-bold text-gray-800 flex items-center">
+                    <i class="fab fa-google-drive text-blue-500 mr-2"></i>
+                    Google Drive同期
+                </h3>
+                <button id="close-sync-modal" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-4">
+                <!-- Google認証セクション -->
+                <div id="auth-section">
+                    <div id="not-authenticated" class="space-y-3">
+                        <div class="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <p class="text-sm text-blue-800">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Google Driveに接続するには、まずログインしてください
+                            </p>
+                        </div>
+                        <button id="google-login-btn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center">
+                            <i class="fab fa-google mr-2"></i>
+                            Googleでログイン
+                        </button>
+                    </div>
+
+                    <div id="authenticated" class="hidden space-y-3">
+                        <div class="p-3 bg-green-50 border border-green-200 rounded-md">
+                            <p class="text-sm text-green-800">
+                                <i class="fas fa-check-circle mr-1"></i>
+                                Google Driveに接続済み
+                            </p>
+                        </div>
+
+                        <!-- フォルダ選択 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">同期フォルダを選択</label>
+                            <button id="select-folder-btn" class="w-full border border-gray-300 rounded-md px-3 py-2 text-left hover:bg-gray-50 transition-colors">
+                                <i class="fas fa-folder mr-2"></i>
+                                <span id="selected-folder-name">フォルダを選択...</span>
+                            </button>
+                            <input type="hidden" id="selected-folder-ids" />
+                        </div>
+
+                        <!-- フォルダ一覧（展開時） -->
+                        <div id="folder-list" class="hidden max-h-64 overflow-y-auto border border-gray-300 rounded-md">
+                            <div class="flex items-center justify-between px-3 py-2 bg-gray-50 border-b sticky top-0 z-10">
+                                <span class="text-sm text-gray-600">同期対象フォルダ</span>
+                                <div class="flex items-center gap-2 text-sm">
+                                    <button type="button" id="select-all-folders" class="text-blue-600 hover:underline">すべて選択</button>
+                                    <span class="text-gray-300">|</span>
+                                    <button type="button" id="clear-all-folders" class="text-gray-600 hover:underline">選択解除</button>
+                                </div>
+                            </div>
+                            <div id="folder-list-content" class="divide-y"></div>
+                        </div>
+
+                        <!-- 同期対象タイプ -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">同期対象</label>
+                            <select id="sync-folder-type" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="all">すべて</option>
+                                <option value="papers">論文</option>
+                                <option value="posters">ポスター</option>
+                                <option value="datasets">データセット</option>
+                            </select>
+                        </div>
+
+                        <button id="sync-button" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors duration-200">
+                            <span id="sync-text">同期開始</span>
+                            <div id="sync-loading" class="loading">
+                                <i class="fas fa-spinner fa-spin mr-2"></i>同期中...
+                            </div>
+                        </button>
+
+                        <div id="sync-result" class="hidden p-3 rounded-md"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- データセット詳細モーダル -->
+    <div id="dataset-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white flex items-center justify-between p-6 border-b z-10">
+                <h3 class="text-2xl font-bold text-gray-800 flex items-center">
+                    <i class="fas fa-database text-purple-600 mr-3"></i>
+                    <span id="dataset-modal-title">データセット詳細</span>
+                </h3>
+                <button id="close-dataset-modal" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+
+            <div class="p-6">
+                <!-- データセット基本情報 -->
+                <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 mb-6">
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="text-sm font-semibold text-gray-600 mb-2">データセット名</h4>
+                            <p class="text-lg font-bold text-gray-800" id="dataset-name">-</p>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-gray-600 mb-2">統計情報</h4>
+                            <div class="flex gap-4">
+                                <div>
+                                    <span class="text-2xl font-bold text-purple-600" id="dataset-file-count">0</span>
+                                    <span class="text-sm text-gray-600 ml-1">ファイル</span>
+                                </div>
+                                <div>
+                                    <span class="text-2xl font-bold text-blue-600" id="dataset-total-size">0</span>
+                                    <span class="text-sm text-gray-600 ml-1">MB</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <h4 class="text-sm font-semibold text-gray-600 mb-2">説明</h4>
+                        <p class="text-gray-700" id="dataset-description">-</p>
+                    </div>
+
+                    <div class="mt-4" id="dataset-summary-section">
+                        <h4 class="text-sm font-semibold text-gray-600 mb-2">要約</h4>
+                        <p class="text-gray-700" id="dataset-summary">-</p>
+                    </div>
+
+                    <div class="mt-4" id="dataset-drive-link-section">
+                        <a id="dataset-drive-link" href="#" target="_blank" class="inline-flex items-center text-blue-600 hover:text-blue-800">
+                            <i class="fab fa-google-drive mr-2"></i>
+                            Google Driveで開く
+                        </a>
+                    </div>
+                </div>
+
+                <!-- ファイル一覧 -->
+                <div class="mb-6">
+                    <h4 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                        <i class="fas fa-folder-open text-purple-500 mr-2"></i>
+                        ファイル一覧
+                    </h4>
+                    <div id="dataset-files-list" class="space-y-2">
+                        <!-- 動的に生成 -->
+                    </div>
+                </div>
+
+                <!-- データプレビュー -->
+                <div id="data-preview-section" class="hidden">
+                    <div class="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+                        <h4 class="text-lg font-bold text-gray-800 mb-1 flex items-center">
+                            <i class="fas fa-table text-blue-500 mr-2 text-xl"></i>
+                            データプレビュー
+                        </h4>
+                        <div class="flex items-center mt-2">
+                            <i class="fas fa-file text-blue-600 mr-2 text-sm"></i>
+                            <span id="preview-file-name" class="text-blue-700 font-semibold"></span>
+                        </div>
+                    </div>
+
+                    <!-- カラム統計情報 -->
+                    <div id="column-stats-section" class="hidden mb-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h5 class="text-lg font-bold text-gray-800 flex items-center">
+                                <i class="fas fa-chart-bar text-purple-500 mr-2"></i>
+                                カラム統計
+                            </h5>
+                            <span class="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full" id="column-count-badge">
+                                <!-- 動的に生成 -->
+                            </span>
+                        </div>
+                        <div id="column-stats-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+
+                    <!-- データテーブル -->
+                    <div class="overflow-x-auto bg-white border border-gray-200 rounded-lg">
+                        <div id="preview-loading" class="p-8 text-center text-gray-500">
+                            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                            <p>データを読み込んでいます...</p>
+                        </div>
+                        <div id="preview-table-container" class="hidden">
+                            <table id="preview-table" class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <!-- 動的に生成 -->
+                                </thead>
+                                <tbody id="preview-table-body" class="bg-white divide-y divide-gray-200">
+                                    <!-- 動的に生成 -->
+                                </tbody>
+                            </table>
+                            <div class="p-3 bg-gray-50 border-t text-sm text-gray-600 text-center">
+                                <span id="preview-row-count">0</span> 行を表示中（最大100行）
+                            </div>
+                        </div>
+                        <div id="preview-error" class="hidden p-8 text-center text-red-500">
+                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                            <p>データの読み込みに失敗しました</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 引用している論文・ポスター -->
+                <div id="citing-docs-section" class="hidden mt-6">
+                    <h4 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                        <i class="fas fa-link text-green-500 mr-2"></i>
+                        このデータセットを引用している文献
+                    </h4>
+
+                    <div id="citing-papers-section" class="hidden mb-4">
+                        <h5 class="text-md font-semibold text-gray-700 mb-2">論文</h5>
+                        <div id="citing-papers-list" class="space-y-2">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+
+                    <div id="citing-posters-section" class="hidden">
+                        <h5 class="text-md font-semibold text-gray-700 mb-2">ポスター</h5>
+                        <div id="citing-posters-list" class="space-y-2">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<!-- JavaScript -->
+<script>
         // グローバル変数でモデル一覧を保持
         let availableModels = [];
         let availableDriveFolders = [];
@@ -1807,237 +1906,5 @@
                 previewError.classList.remove('hidden');
             }
         }
-    </script>
-
-    <!-- Google Drive同期モーダル -->
-    <div id="sync-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div class="flex items-center justify-between p-6 border-b">
-                <h3 class="text-xl font-bold text-gray-800 flex items-center">
-                    <i class="fab fa-google-drive text-blue-500 mr-2"></i>
-                    Google Drive同期
-                </h3>
-                <button id="close-sync-modal" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
-            </div>
-
-            <div class="p-6 space-y-4">
-                <!-- Google認証セクション -->
-                <div id="auth-section">
-                    <div id="not-authenticated" class="space-y-3">
-                        <div class="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                            <p class="text-sm text-blue-800">
-                                <i class="fas fa-info-circle mr-1"></i>
-                                Google Driveに接続するには、まずログインしてください
-                            </p>
-                        </div>
-                        <button id="google-login-btn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center">
-                            <i class="fab fa-google mr-2"></i>
-                            Googleでログイン
-                        </button>
-                    </div>
-
-                    <div id="authenticated" class="hidden space-y-3">
-                        <div class="p-3 bg-green-50 border border-green-200 rounded-md">
-                            <p class="text-sm text-green-800">
-                                <i class="fas fa-check-circle mr-1"></i>
-                                Google Driveに接続済み
-                            </p>
-                        </div>
-
-                        <!-- フォルダ選択 -->
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">同期フォルダを選択</label>
-                            <button id="select-folder-btn" class="w-full border border-gray-300 rounded-md px-3 py-2 text-left hover:bg-gray-50 transition-colors">
-                                <i class="fas fa-folder mr-2"></i>
-                                <span id="selected-folder-name">フォルダを選択...</span>
-                            </button>
-                            <input type="hidden" id="selected-folder-ids" />
-                        </div>
-
-                        <!-- フォルダ一覧（展開時） -->
-                        <div id="folder-list" class="hidden max-h-64 overflow-y-auto border border-gray-300 rounded-md">
-                            <div class="flex items-center justify-between px-3 py-2 bg-gray-50 border-b sticky top-0 z-10">
-                                <span class="text-sm text-gray-600">同期対象フォルダ</span>
-                                <div class="flex items-center gap-2 text-sm">
-                                    <button type="button" id="select-all-folders" class="text-blue-600 hover:underline">すべて選択</button>
-                                    <span class="text-gray-300">|</span>
-                                    <button type="button" id="clear-all-folders" class="text-gray-600 hover:underline">選択解除</button>
-                                </div>
-                            </div>
-                            <div id="folder-list-content" class="divide-y"></div>
-                        </div>
-
-                        <!-- 同期対象タイプ -->
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">同期対象</label>
-                            <select id="sync-folder-type" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="all">すべて</option>
-                                <option value="papers">論文</option>
-                                <option value="posters">ポスター</option>
-                                <option value="datasets">データセット</option>
-                            </select>
-                        </div>
-
-                        <button id="sync-button" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors duration-200">
-                            <span id="sync-text">同期開始</span>
-                            <div id="sync-loading" class="loading">
-                                <i class="fas fa-spinner fa-spin mr-2"></i>同期中...
-                            </div>
-                        </button>
-
-                        <div id="sync-result" class="hidden p-3 rounded-md"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- データセット詳細モーダル -->
-    <div id="dataset-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
-        <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
-            <div class="sticky top-0 bg-white flex items-center justify-between p-6 border-b z-10">
-                <h3 class="text-2xl font-bold text-gray-800 flex items-center">
-                    <i class="fas fa-database text-purple-600 mr-3"></i>
-                    <span id="dataset-modal-title">データセット詳細</span>
-                </h3>
-                <button id="close-dataset-modal" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-times text-2xl"></i>
-                </button>
-            </div>
-
-            <div class="p-6">
-                <!-- データセット基本情報 -->
-                <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 mb-6">
-                    <div class="grid md:grid-cols-2 gap-6">
-                        <div>
-                            <h4 class="text-sm font-semibold text-gray-600 mb-2">データセット名</h4>
-                            <p class="text-lg font-bold text-gray-800" id="dataset-name">-</p>
-                        </div>
-                        <div>
-                            <h4 class="text-sm font-semibold text-gray-600 mb-2">統計情報</h4>
-                            <div class="flex gap-4">
-                                <div>
-                                    <span class="text-2xl font-bold text-purple-600" id="dataset-file-count">0</span>
-                                    <span class="text-sm text-gray-600 ml-1">ファイル</span>
-                                </div>
-                                <div>
-                                    <span class="text-2xl font-bold text-blue-600" id="dataset-total-size">0</span>
-                                    <span class="text-sm text-gray-600 ml-1">MB</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mt-4">
-                        <h4 class="text-sm font-semibold text-gray-600 mb-2">説明</h4>
-                        <p class="text-gray-700" id="dataset-description">-</p>
-                    </div>
-
-                    <div class="mt-4" id="dataset-summary-section">
-                        <h4 class="text-sm font-semibold text-gray-600 mb-2">要約</h4>
-                        <p class="text-gray-700" id="dataset-summary">-</p>
-                    </div>
-
-                    <div class="mt-4" id="dataset-drive-link-section">
-                        <a id="dataset-drive-link" href="#" target="_blank" class="inline-flex items-center text-blue-600 hover:text-blue-800">
-                            <i class="fab fa-google-drive mr-2"></i>
-                            Google Driveで開く
-                        </a>
-                    </div>
-                </div>
-
-                <!-- ファイル一覧 -->
-                <div class="mb-6">
-                    <h4 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                        <i class="fas fa-folder-open text-purple-500 mr-2"></i>
-                        ファイル一覧
-                    </h4>
-                    <div id="dataset-files-list" class="space-y-2">
-                        <!-- 動的に生成 -->
-                    </div>
-                </div>
-
-                <!-- データプレビュー -->
-                <div id="data-preview-section" class="hidden">
-                    <div class="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
-                        <h4 class="text-lg font-bold text-gray-800 mb-1 flex items-center">
-                            <i class="fas fa-table text-blue-500 mr-2 text-xl"></i>
-                            データプレビュー
-                        </h4>
-                        <div class="flex items-center mt-2">
-                            <i class="fas fa-file text-blue-600 mr-2 text-sm"></i>
-                            <span id="preview-file-name" class="text-blue-700 font-semibold"></span>
-                        </div>
-                    </div>
-
-                    <!-- カラム統計情報 -->
-                    <div id="column-stats-section" class="hidden mb-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h5 class="text-lg font-bold text-gray-800 flex items-center">
-                                <i class="fas fa-chart-bar text-purple-500 mr-2"></i>
-                                カラム統計
-                            </h5>
-                            <span class="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full" id="column-count-badge">
-                                <!-- 動的に生成 -->
-                            </span>
-                        </div>
-                        <div id="column-stats-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <!-- 動的に生成 -->
-                        </div>
-                    </div>
-
-                    <!-- データテーブル -->
-                    <div class="overflow-x-auto bg-white border border-gray-200 rounded-lg">
-                        <div id="preview-loading" class="p-8 text-center text-gray-500">
-                            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                            <p>データを読み込んでいます...</p>
-                        </div>
-                        <div id="preview-table-container" class="hidden">
-                            <table id="preview-table" class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-gray-50 sticky top-0">
-                                    <!-- 動的に生成 -->
-                                </thead>
-                                <tbody id="preview-table-body" class="bg-white divide-y divide-gray-200">
-                                    <!-- 動的に生成 -->
-                                </tbody>
-                            </table>
-                            <div class="p-3 bg-gray-50 border-t text-sm text-gray-600 text-center">
-                                <span id="preview-row-count">0</span> 行を表示中（最大100行）
-                            </div>
-                        </div>
-                        <div id="preview-error" class="hidden p-8 text-center text-red-500">
-                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
-                            <p>データの読み込みに失敗しました</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 引用している論文・ポスター -->
-                <div id="citing-docs-section" class="hidden mt-6">
-                    <h4 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                        <i class="fas fa-link text-green-500 mr-2"></i>
-                        このデータセットを引用している文献
-                    </h4>
-
-                    <div id="citing-papers-section" class="hidden mb-4">
-                        <h5 class="text-md font-semibold text-gray-700 mb-2">論文</h5>
-                        <div id="citing-papers-list" class="space-y-2">
-                            <!-- 動的に生成 -->
-                        </div>
-                    </div>
-
-                    <div id="citing-posters-section" class="hidden">
-                        <h5 class="text-md font-semibold text-gray-700 mb-2">ポスター</h5>
-                        <div id="citing-posters-list" class="space-y-2">
-                            <!-- 動的に生成 -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-</body>
-</html>
+</script>
+{% endblock %}

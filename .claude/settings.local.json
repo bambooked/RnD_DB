@@ -5,7 +5,10 @@
       "Bash(lsof:*)",
       "Bash(xargs kill:*)",
       "Bash(uv run python:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(python3 -c \"import sys; sys.path.insert(0, ''/Users/take/others/geeksai/RnDDB/script''); from agent.source.ui.interface import UserInterface; print(''Import successful!'')\")",
+      "Bash(python3:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []
