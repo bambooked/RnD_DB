@@ -1,10 +1,10 @@
 # 研究データ管理システム - R&D DB
 
-Google Drive連携 & ベクトル検索RAG搭載 AI研究相談システム
+Google Drive連携 & スマート推薦搭載 AI研究相談システム
 
 ## 概要
 
-Google Drive連携とAI（Google Gemini + セマンティック検索）を活用した研究相談機能を備えた、完全なWebベースの研究データ管理システムです。研究者が論文、ポスター、データセットを効率的に管理し、**最新のベクトル検索技術**でリアルタイムにAI相談を受けられます。
+Google Drive連携とAI（Google Gemini + セマンティック検索）を活用した研究相談機能を備えた、完全なWebベースの研究データ管理システムです。研究者が論文、ポスター、データセットを効率的に管理し、**最新のベクトル検索技術とスマート関連性フィルタリング**でリアルタイムにAI相談を受けられます。関連性の高いアイテムのみを推薦し、Google Driveへの直接リンクでワンクリックアクセスを実現します。
 
 ## 主要機能
 
@@ -21,6 +21,8 @@ Google Drive連携とAI（Google Gemini + セマンティック検索）を活�
 - **自動ファイル同期**: 選択したフォルダから自動インポート
 - **セキュアな認証**: OAuth 2.0による安全な認証フロー
 - **フォルダ構造対応**: datasets/paper/posterフォルダの自動識別
+- **直接リンク**: 論文・ポスター・データセットへのGoogle Drive URLを自動保存
+- **ワンクリックアクセス**: UI上の「開く」ボタンでGoogle Driveへ直接ジャンプ
 
 ### 🤖 **AI研究相談（RAG + LLM）**
 - **セマンティック検索RAG**: ChromaDB + sentence-transformers による意味理解
@@ -29,6 +31,8 @@ Google Drive連携とAI（Google Gemini + セマンティック検索）を活�
 - **コンテキスト検索**: 既存データベースを参照した的確な助言
 - **研究計画支援**: プロジェクト計画から実行まで包括的サポート
 - **関連文書提示**: 質問に関連する論文・データセットを自動抽出
+- **スマート関連性フィルタリング**: 関連性スコアに基づく精度の高い推薦
+- **Google Driveリンク**: 各アイテムへの直接アクセス可能
 
 ### 🔍 **高度な検索機能（ベクトル検索対応）**
 - **セマンティック検索**: 意味ベースの高精度検索
@@ -149,6 +153,41 @@ curl -X POST http://localhost:8000/api/vector/index
 - `POST /api/search` - 研究データ検索（ハイブリッド）
 - `POST /api/consultation` - AI研究相談（RAG対応）
 
+## 使用例
+
+### スマート推薦の仕組み
+
+質問に対して関連性の高いアイテムのみを推薦します：
+
+```javascript
+// ユーザーの質問: "LLMのバイアスに関する研究を教えて"
+
+// システムの動作:
+// 1. キーワード抽出: ["llm", "バイアス"]
+// 2. stopwords除外: ["研究", "教えて"] → 除外
+// 3. スコアリング:
+//    - jbbq: "LLM" + "バイアス" 一致 → スコア6 → ✅ 表示
+//    - esg: キーワード不一致 → スコア0 → ❌ 非表示
+//    - tv_efect: 一般的単語のみ一致 → スコア3 → ❌ 非表示
+
+// 結果: 関連性の高いjbbqデータセットのみを表示
+```
+
+### Google Drive直接アクセス
+
+各アイテムに「開く」ボタンが表示され、Google Driveへワンクリックでアクセスできます：
+
+```html
+<!-- UI表示例 -->
+<div class="research-item">
+  <h3>JBBQ (Japanese Bias Benchmark for QA)</h3>
+  <p>日本語LLMのバイアス（偏見）検証用データセット</p>
+  <button onclick="window.open('https://drive.google.com/...')">
+    <i class="fas fa-external-link-alt"></i> 開く
+  </button>
+</div>
+```
+
 ## 機能詳細
 
 ### ベクトル検索（セマンティック検索）
@@ -211,23 +250,32 @@ curl -X POST http://localhost:8000/api/vector/search \
 RnD_DB/
 ├── web_app.py                      # メインWebアプリケーション
 ├── templates/
-│   └── index.html                 # フロントエンドUI
-├── agent/source/
-│   ├── integrations/              # クラウド連携機能
-│   │   ├── vector_search.py       # ベクトル検索エンジン（ChromaDB）
-│   │   ├── vector_indexer.py      # インデックス作成・管理
-│   │   └── looker_export.py       # データエクスポート
-│   ├── database/                  # データベース関連
-│   │   ├── connection.py          # DB接続管理
-│   │   └── new_repository.py      # リポジトリパターン
-│   ├── advisor/                   # AI相談機能
-│   │   └── enhanced_research_advisor.py  # RAG対応アドバイザー
-│   └── analyzer/                  # ファイル解析
-│       └── gemini_client.py       # Gemini API クライアント
+│   └── index.html                 # フロントエンドUI（TailwindCSS）
+├── agent/
+│   ├── source/
+│   │   ├── integrations/          # クラウド連携機能
+│   │   │   ├── vector_search.py   # ベクトル検索エンジン（ChromaDB）
+│   │   │   ├── vector_indexer.py  # インデックス作成・管理
+│   │   │   └── looker_export.py   # データエクスポート
+│   │   ├── database/              # データベース関連
+│   │   │   ├── connection.py      # DB接続管理
+│   │   │   ├── new_models.py      # データモデル
+│   │   │   └── new_repository.py  # リポジトリパターン
+│   │   ├── advisor/               # AI相談機能
+│   │   │   └── enhanced_research_advisor.py  # RAG + 関連性フィルタリング
+│   │   └── analyzer/              # ファイル解析
+│   │       └── gemini_client.py   # Gemini API クライアント
+│   └── database/
+│       └── research_data.db       # SQLiteデータベース
 ├── chroma_db/                     # ベクトルDB永続化ディレクトリ
-├── credentials/                   # 認証情報
+├── credentials/                   # 認証情報（.gitignore）
 │   ├── google_drive_credentials.json  # OAuth Client ID
-│   └── google_oauth_token.json        # 保存されたトークン
+│   ├── google_oauth_token.json        # 保存されたトークン
+│   └── client_secret.json             # OAuth設定
+├── scripts/                       # テスト・デバッグスクリプト
+│   ├── check_response.py          # API応答テスト
+│   ├── test_sync.py               # Drive同期テスト
+│   └── migrate_add_drive_urls.py  # マイグレーションスクリプト
 ├── .env                          # 環境設定
 ├── pyproject.toml                # プロジェクト設定（uv）
 └── README.md                     # このファイル
@@ -255,6 +303,11 @@ RnD_DB/
 - `CHAT_HISTORY_LIMIT`: チャット履歴保持数
 - `MAX_RESPONSE_LENGTH`: AI応答最大長
 - `SIMILARITY_THRESHOLD`: 検索類似度閾値（ベクトル検索: 0.3-0.5推奨）
+
+### 関連性フィルタリング設定
+- **データセット推薦閾値**: スコア5以上（重要キーワード2つ以上一致 or データセット名一致）
+- **stopwords**: 一般的すぎる単語を除外（「研究」「分析」「データ」など）
+- **推薦精度**: 関連性の高いアイテムのみを表示
 
 ## トラブルシューティング
 
@@ -288,6 +341,22 @@ RnD_DB/
 3. 閾値（threshold）を下げてテスト（0.3推奨）
 4. フォールバックTF-IDF検索が動作しているか確認
 
+### 関連性の低いアイテムが表示される / 関連性の高いアイテムが表示されない
+1. **データセットのdescriptionを確認**:
+   - 重要なキーワードがdescriptionに含まれているか確認
+   - 例: JBBQなら「LLM」「バイアス」「bias」などを含める
+   ```sql
+   UPDATE datasets SET description = 'JBBQ (Japanese Bias Benchmark for QA) は日本語LLMのバイアス検証用データセット' WHERE name = 'jbbq';
+   ```
+
+2. **stopwordsの確認**:
+   - `agent/source/advisor/enhanced_research_advisor.py` の stopwords を確認
+   - 一般的すぎる単語が除外されているか確認
+
+3. **関連性スコアの調整**:
+   - 現在の閾値: データセット = 5, 論文/ポスター = ベクトル類似度ベース
+   - `enhanced_research_advisor.py:512` で閾値変更可能
+
 ## ライセンス
 
 研究・教育目的での利用を前提としています。
@@ -296,23 +365,31 @@ RnD_DB/
 
 プルリクエストやイシューの報告を歓迎します。
 
-## 主な改善点（v2.0）
+## 主な改善点
 
-### 🎯 セマンティック検索RAG
+### v2.1 - スマート推薦機能 🎯
+- **Google Drive直接リンク**: 論文・ポスター・データセットへのワンクリックアクセス
+- **関連性フィルタリング**: スコアリングによる精度の高い推薦
+  - データセット閾値: スコア5以上（重要キーワード2つ以上一致）
+  - stopwords拡張: 一般的すぎる単語を自動除外
+- **UI改善**: 各アイテムに「開く」ボタンを表示
+- **推薦精度向上**: 関連性の低いアイテムを自動除外
+
+### v2.0 - セマンティック検索RAG 🔍
 - **ChromaDB**による高速ベクトル検索
 - **sentence-transformers**で意味ベースの検索
 - TF-IDFフォールバックのハイブリッド検索
 
-### 🔐 Web OAuth認証
+### v1.5 - Web OAuth認証 🔐
 - サービスアカウント不要、Googleアカウントでログイン
 - Web UI上でフォルダ選択
 - 認証情報の永続化でリロード対応
 
-### 📊 ダッシュボード強化
+### v1.0 - 基本機能 📊
 - リアルタイム統計表示
 - Chart.jsによる可視化
 - データタイプ別分析
 
 ---
 
-**最新のベクトル検索RAGで、研究データ管理を次のレベルへ！** 🚀
+**スマート推薦 + ベクトル検索RAGで、研究データ管理を次のレベルへ！** 🚀
