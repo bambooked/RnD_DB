@@ -1883,6 +1883,278 @@ async def sync_openrouter_models():
         return JSONResponse(response_data)
 
 
+# ==================== データセットプレビューエンドポイント ====================
+
+@app.get("/api/datasets/{dataset_id}")
+async def get_dataset_detail(dataset_id: int):
+    """データセット詳細情報を取得"""
+    try:
+        dataset = dataset_repo.find_by_id(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        # データセット内のファイル一覧を取得
+        files = dataset_file_repo.find_by_dataset_id(dataset_id)
+
+        # 引用している論文・ポスターを取得
+        citing_papers = []
+        paper_rels = paper_dataset_rel_repo.find_by_dataset_id(dataset_id)
+        for rel in paper_rels:
+            paper = paper_repo.find_by_id(rel.paper_id)
+            if paper:
+                citing_papers.append({
+                    "id": paper.id,
+                    "title": paper.title,
+                    "authors": paper.authors,
+                    "file_name": paper.file_name
+                })
+
+        citing_posters = []
+        poster_rels = poster_dataset_rel_repo.find_by_dataset_id(dataset_id)
+        for rel in poster_rels:
+            poster = poster_repo.find_by_id(rel.poster_id)
+            if poster:
+                citing_posters.append({
+                    "id": poster.id,
+                    "title": poster.title,
+                    "authors": poster.authors,
+                    "file_name": poster.file_name
+                })
+
+        # ファイル情報を整形
+        files_info = []
+        for file in files:
+            file_info = {
+                "id": file.id,
+                "file_name": file.file_name,
+                "file_type": file.file_type,
+                "file_size": file.file_size,
+                "file_size_mb": round(file.file_size / (1024 * 1024), 2) if file.file_size else 0,
+                "summary": file.summary,
+                "schema_info": json.loads(file.schema_info) if file.schema_info else None,
+                "drive_file_id": file.drive_file_id,
+                "drive_url": file.drive_url,
+                "created_at": file.created_at.isoformat() if file.created_at else None,
+                "updated_at": file.updated_at.isoformat() if file.updated_at else None
+            }
+            files_info.append(file_info)
+
+        return JSONResponse({
+            "success": True,
+            "dataset": {
+                "id": dataset.id,
+                "name": dataset.name,
+                "description": dataset.description,
+                "summary": dataset.summary,
+                "file_count": dataset.file_count,
+                "total_size": dataset.total_size,
+                "total_size_mb": round(dataset.total_size / (1024 * 1024), 2) if dataset.total_size else 0,
+                "drive_folder_id": dataset.drive_folder_id,
+                "drive_url": dataset.drive_url,
+                "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
+                "updated_at": dataset.updated_at.isoformat() if dataset.updated_at else None
+            },
+            "files": files_info,
+            "citing_papers": citing_papers,
+            "citing_posters": citing_posters
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Dataset detail error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/datasets/{dataset_id}/files")
+async def get_dataset_files(dataset_id: int):
+    """データセット内のファイル一覧を取得"""
+    try:
+        dataset = dataset_repo.find_by_id(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        files = dataset_file_repo.find_by_dataset_id(dataset_id)
+
+        files_info = []
+        for file in files:
+            files_info.append({
+                "id": file.id,
+                "file_name": file.file_name,
+                "file_type": file.file_type,
+                "file_size": file.file_size,
+                "file_size_mb": round(file.file_size / (1024 * 1024), 2) if file.file_size else 0,
+                "summary": file.summary,
+                "drive_file_id": file.drive_file_id,
+                "drive_url": file.drive_url
+            })
+
+        return JSONResponse({
+            "success": True,
+            "dataset_id": dataset_id,
+            "dataset_name": dataset.name,
+            "files": files_info,
+            "count": len(files_info)
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Dataset files error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/datasets/{dataset_id}/files/{file_id}/preview")
+async def get_file_preview(dataset_id: int, file_id: int, rows: int = 100):
+    """データセットファイルのプレビューを取得"""
+    try:
+        # 認証確認
+        if 'default' not in user_credentials:
+            raise HTTPException(status_code=401, detail="Google認証が必要です")
+
+        # ファイル情報を取得
+        file = dataset_file_repo.find_by_path(f"gdrive://dataset/%/{file_id}")
+        if not file:
+            # IDで直接検索
+            all_files = dataset_file_repo.find_by_dataset_id(dataset_id)
+            file = next((f for f in all_files if f.id == file_id), None)
+
+        if not file or file.dataset_id != dataset_id:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Google Drive APIサービスを作成
+        creds = user_credentials['default']
+        service = build('drive', 'v3', credentials=creds)
+
+        # ファイルをダウンロードしてプレビュー生成
+        preview_data = await generate_file_preview(
+            service,
+            file.drive_file_id,
+            file.file_name,
+            file.file_type,
+            rows
+        )
+
+        return JSONResponse({
+            "success": True,
+            "file_id": file_id,
+            "file_name": file.file_name,
+            "file_type": file.file_type,
+            "preview": preview_data
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"File preview error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def generate_file_preview(service, file_id: str, file_name: str, file_type: str, max_rows: int = 100) -> Dict[str, Any]:
+    """ファイルのプレビューデータを生成"""
+    try:
+        import tempfile
+        import pandas as pd
+        from googleapiclient.http import MediaIoBaseDownload
+        import io
+
+        # 一時ファイルを作成
+        with tempfile.NamedTemporaryFile(suffix=f'.{file_type}', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        # Google Driveからファイルをダウンロード
+        request = service.files().get_media(fileId=file_id)
+        fh = io.FileIO(tmp_path, 'wb')
+        downloader = MediaIoBaseDownload(fh, request)
+
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        fh.close()
+
+        try:
+            preview_data = {}
+
+            if file_type == 'csv':
+                # CSVファイルの解析
+                df = pd.read_csv(tmp_path, nrows=max_rows)
+
+                # データプレビュー
+                preview_data['columns'] = list(df.columns)
+                preview_data['rows'] = df.to_dict(orient='records')
+                preview_data['total_rows'] = len(df)
+                preview_data['dtypes'] = {col: str(dtype) for col, dtype in df.dtypes.items()}
+
+                # 統計情報
+                stats = {}
+                for col in df.columns:
+                    col_stats = {
+                        'type': str(df[col].dtype),
+                        'null_count': int(df[col].isnull().sum()),
+                        'unique_count': int(df[col].nunique())
+                    }
+
+                    # 数値型の場合は統計情報を追加
+                    if pd.api.types.is_numeric_dtype(df[col]):
+                        col_stats['min'] = float(df[col].min()) if not pd.isna(df[col].min()) else None
+                        col_stats['max'] = float(df[col].max()) if not pd.isna(df[col].max()) else None
+                        col_stats['mean'] = float(df[col].mean()) if not pd.isna(df[col].mean()) else None
+                        col_stats['median'] = float(df[col].median()) if not pd.isna(df[col].median()) else None
+
+                    stats[col] = col_stats
+
+                preview_data['statistics'] = stats
+
+            elif file_type in ['json', 'jsonl']:
+                if file_type == 'jsonl':
+                    # JSONLファイルの解析
+                    with open(tmp_path, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()[:max_rows]
+                        data = [json.loads(line) for line in lines]
+
+                    preview_data['format'] = 'jsonl'
+                    preview_data['total_rows'] = len(lines)
+                    preview_data['rows'] = data
+
+                    if data:
+                        # 最初のレコードからカラムを抽出
+                        preview_data['columns'] = list(data[0].keys()) if isinstance(data[0], dict) else []
+                else:
+                    # JSONファイルの解析
+                    with open(tmp_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+
+                    if isinstance(data, list):
+                        preview_data['format'] = 'json_array'
+                        preview_data['total_rows'] = min(len(data), max_rows)
+                        preview_data['rows'] = data[:max_rows]
+
+                        if data and isinstance(data[0], dict):
+                            preview_data['columns'] = list(data[0].keys())
+                    else:
+                        preview_data['format'] = 'json_object'
+                        preview_data['data'] = data
+                        if isinstance(data, dict):
+                            preview_data['columns'] = list(data.keys())
+
+            return preview_data
+
+        finally:
+            # 一時ファイルを削除
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+
+    except Exception as e:
+        logger.error(f"Preview generation error: {file_name}, {e}")
+        raise
+
+
 if __name__ == "__main__":
     import uvicorn
 
