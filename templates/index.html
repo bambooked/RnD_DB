@@ -416,6 +416,7 @@
     <script>
         // グローバル変数でモデル一覧を保持
         let availableModels = [];
+        let availableDriveFolders = [];
 
         // モデル一覧を取得
         async function loadAvailableModels() {
@@ -546,6 +547,19 @@
             const loading = document.getElementById('sync-loading');
             const result = document.getElementById('sync-result');
             const folderType = document.getElementById('sync-folder-type').value;
+            const selectedFolderIdsInput = document.getElementById('selected-folder-ids');
+            let selectedFolderIds = [];
+
+            if (selectedFolderIdsInput && selectedFolderIdsInput.value) {
+                try {
+                    const parsed = JSON.parse(selectedFolderIdsInput.value);
+                    if (Array.isArray(parsed)) {
+                        selectedFolderIds = parsed;
+                    }
+                } catch (error) {
+                    console.warn('フォルダIDの解析に失敗しました:', error);
+                }
+            }
             
             // UI更新
             button.disabled = true;
@@ -554,12 +568,17 @@
             result.classList.add('hidden');
             
             try {
+                const payload = { folder_type: folderType };
+                if (selectedFolderIds.length > 0) {
+                    payload.folder_ids = selectedFolderIds;
+                }
+
                 const response = await fetch('/api/sync/google-drive', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ folder_type: folderType })
+                    body: JSON.stringify(payload)
                 });
                 
                 const data = await response.json();
@@ -1383,6 +1402,79 @@
                 });
             }
 
+            // 同期対象フォルダの選択状態管理
+            const selectedFolderNameLabel = document.getElementById('selected-folder-name');
+            const selectedFolderIdsInput = document.getElementById('selected-folder-ids');
+            const selectedFolders = new Map();
+            const selectAllFoldersBtn = document.getElementById('select-all-folders');
+            const clearAllFoldersBtn = document.getElementById('clear-all-folders');
+
+            function getSelectedFolderIds() {
+                return Array.from(selectedFolders.keys());
+            }
+
+            function getSelectedFolderNames() {
+                return Array.from(selectedFolders.values());
+            }
+
+            function formatSelectedFolderLabel(names) {
+                if (!names.length) {
+                    return 'フォルダを選択...';
+                }
+                const uniqueNames = names.filter(Boolean);
+                if (!uniqueNames.length) {
+                    return `${names.length}件選択`;
+                }
+                if (uniqueNames.length <= 3) {
+                    return uniqueNames.join(', ');
+                }
+                return `${uniqueNames.slice(0, 3).join(', ')} 他${uniqueNames.length - 3}件`;
+            }
+
+            function updateSelectedFoldersUI() {
+                const names = getSelectedFolderNames();
+                if (selectedFolderNameLabel) {
+                    selectedFolderNameLabel.textContent = formatSelectedFolderLabel(names);
+                }
+                if (selectedFolderIdsInput) {
+                    selectedFolderIdsInput.value = JSON.stringify(getSelectedFolderIds());
+                }
+            }
+
+            async function persistSelectedFolders() {
+                try {
+                    await fetch('/api/drive/set-folder', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ folder_ids: getSelectedFolderIds() })
+                    });
+                } catch (error) {
+                    console.error('フォルダ設定エラー:', error);
+                }
+            }
+
+            async function initializeSelectedFolders() {
+                try {
+                    const response = await fetch('/api/google-drive/status');
+                    const status = await response.json();
+
+                    if (status.enabled && Array.isArray(status.configured_folder_ids)) {
+                        selectedFolders.clear();
+                        const selectedInfo = Array.isArray(status.selected_folders) ? status.selected_folders : [];
+
+                        status.configured_folder_ids.forEach(folderId => {
+                            const info = selectedInfo.find(item => item.id === folderId);
+                            selectedFolders.set(folderId, info?.name || folderId);
+                        });
+                        updateSelectedFoldersUI();
+                    }
+                } catch (error) {
+                    console.error('フォルダ初期化エラー:', error);
+                }
+            }
+
+            updateSelectedFoldersUI();
+
             // フォルダ選択ボタン
             const selectFolderBtn = document.getElementById('select-folder-btn');
             const folderList = document.getElementById('folder-list');
@@ -1391,36 +1483,86 @@
                     try {
                         const response = await fetch('/api/drive/folders');
                         const data = await response.json();
+                        availableDriveFolders = Array.isArray(data.folders) ? data.folders : [];
 
                         const folderListContent = document.getElementById('folder-list-content');
                         folderListContent.innerHTML = '';
 
-                        data.folders.forEach(folder => {
-                            const folderItem = document.createElement('div');
-                            folderItem.className = 'p-3 hover:bg-gray-100 cursor-pointer flex items-center';
-                            folderItem.innerHTML = `
-                                <i class="fas fa-folder text-yellow-500 mr-2"></i>
-                                <span class="flex-1">${folder.name}</span>
-                            `;
-                            folderItem.addEventListener('click', () => {
-                                document.getElementById('selected-folder-name').textContent = folder.name;
-                                document.getElementById('selected-folder-id').value = folder.id;
-                                folderList.classList.add('hidden');
+                        availableDriveFolders.forEach(folder => {
+                            const folderItem = document.createElement('label');
+                            folderItem.className = 'flex items-center gap-3 p-3 hover:bg-gray-100 cursor-pointer';
 
-                                // フォルダIDを設定
-                                fetch('/api/drive/set-folder', {
-                                    method: 'POST',
-                                    headers: {'Content-Type': 'application/json'},
-                                    body: JSON.stringify({folder_id: folder.id})
-                                });
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.className = 'form-checkbox h-4 w-4 text-blue-600';
+                            checkbox.value = folder.id;
+                            checkbox.checked = selectedFolders.has(folder.id);
+                            checkbox.addEventListener('change', (event) => {
+                                if (event.target.checked) {
+                                    selectedFolders.set(folder.id, folder.name);
+                                } else {
+                                    selectedFolders.delete(folder.id);
+                                }
+                                updateSelectedFoldersUI();
+                                persistSelectedFolders();
                             });
+
+                            if (selectedFolders.has(folder.id)) {
+                                selectedFolders.set(folder.id, folder.name);
+                            }
+
+                            const icon = document.createElement('i');
+                            icon.className = 'fas fa-folder text-yellow-500 mr-2';
+
+                            const nameSpan = document.createElement('span');
+                            nameSpan.className = 'flex-1';
+                            nameSpan.textContent = folder.name;
+
+                            folderItem.appendChild(checkbox);
+                            folderItem.appendChild(icon);
+                            folderItem.appendChild(nameSpan);
+
                             folderListContent.appendChild(folderItem);
                         });
 
+                        updateSelectedFoldersUI();
                         folderList.classList.toggle('hidden');
                     } catch (error) {
                         console.error('Folder list error:', error);
                         alert('フォルダ一覧の取得に失敗しました');
+                    }
+                });
+            }
+
+            if (selectAllFoldersBtn) {
+                selectAllFoldersBtn.addEventListener('click', () => {
+                    if (!availableDriveFolders.length) return;
+                    selectedFolders.clear();
+                    availableDriveFolders.forEach(folder => {
+                        selectedFolders.set(folder.id, folder.name);
+                    });
+                    updateSelectedFoldersUI();
+                    persistSelectedFolders();
+                    const folderListContent = document.getElementById('folder-list-content');
+                    if (folderListContent) {
+                        folderListContent.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                            cb.checked = true;
+                        });
+                    }
+                });
+            }
+
+            if (clearAllFoldersBtn) {
+                clearAllFoldersBtn.addEventListener('click', () => {
+                    if (!selectedFolders.size) return;
+                    selectedFolders.clear();
+                    updateSelectedFoldersUI();
+                    persistSelectedFolders();
+                    const folderListContent = document.getElementById('folder-list-content');
+                    if (folderListContent) {
+                        folderListContent.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                            cb.checked = false;
+                        });
                     }
                 });
             }
@@ -1446,6 +1588,7 @@
 
             // 初期化時に認証状態をチェック
             checkAuthStatus();
+            initializeSelectedFolders();
 
             // 認証成功時の処理
             const urlParams = new URLSearchParams(window.location.search);
@@ -1500,11 +1643,19 @@
                                 <i class="fas fa-folder mr-2"></i>
                                 <span id="selected-folder-name">フォルダを選択...</span>
                             </button>
-                            <input type="hidden" id="selected-folder-id" />
+                            <input type="hidden" id="selected-folder-ids" />
                         </div>
 
                         <!-- フォルダ一覧（展開時） -->
                         <div id="folder-list" class="hidden max-h-64 overflow-y-auto border border-gray-300 rounded-md">
+                            <div class="flex items-center justify-between px-3 py-2 bg-gray-50 border-b sticky top-0 z-10">
+                                <span class="text-sm text-gray-600">同期対象フォルダ</span>
+                                <div class="flex items-center gap-2 text-sm">
+                                    <button type="button" id="select-all-folders" class="text-blue-600 hover:underline">すべて選択</button>
+                                    <span class="text-gray-300">|</span>
+                                    <button type="button" id="clear-all-folders" class="text-gray-600 hover:underline">選択解除</button>
+                                </div>
+                            </div>
                             <div id="folder-list-content" class="divide-y"></div>
                         </div>
 

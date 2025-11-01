@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.requests import Request
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import os
 import asyncio
 import logging
@@ -301,7 +301,8 @@ background_thread = None
 # リクエスト/レスポンスモデル
 class GoogleDriveSyncRequest(BaseModel):
     folder_type: str  # "all", "datasets", "papers", "posters"
-    folder_id: str  # Google Drive folder ID to sync
+    folder_ids: Optional[List[str]] = None  # 複数選択対応
+    folder_id: Optional[str] = None  # 既存クライアント互換用
 
 class SearchRequest(BaseModel):
     query: str
@@ -450,8 +451,17 @@ async def sync_google_drive(request: GoogleDriveSyncRequest, background_tasks: B
         raise HTTPException(status_code=401, detail="Google認証が必要です")
 
     try:
+        # 同期対象フォルダIDをリストに正規化
+        raw_folder_ids = (request.folder_ids or []) + ([request.folder_id] if request.folder_id else [])
+        folder_ids = []
+        seen_ids = set()
+        for fid in raw_folder_ids:
+            if fid and fid not in seen_ids:
+                folder_ids.append(fid)
+                seen_ids.add(fid)
+
         # バックグラウンドで同期実行
-        background_tasks.add_task(perform_google_drive_sync, request.folder_type, request.folder_id)
+        background_tasks.add_task(perform_google_drive_sync, request.folder_type, folder_ids)
 
         return SyncResponse(
             success=True,
@@ -462,11 +472,10 @@ async def sync_google_drive(request: GoogleDriveSyncRequest, background_tasks: B
         logger.error(f"Google Drive同期エラー: {e}")
         raise HTTPException(status_code=500, detail=f"同期エラー: {str(e)}")
 
-async def perform_google_drive_sync(folder_type: str, folder_id: str):
+async def perform_google_drive_sync(folder_type: str, folder_ids: List[str]):
     """Google Drive同期の実際の処理"""
     try:
-        logger.info(f"Google Drive同期開始: {folder_type}, folder_id: {folder_id}")
-        source_folder_id = folder_id
+        logger.info(f"Google Drive同期開始: folder_type={folder_type}, folder_ids={folder_ids}")
 
         if 'default' not in user_credentials:
             logger.error("認証情報がありません")
@@ -477,83 +486,53 @@ async def perform_google_drive_sync(folder_type: str, folder_id: str):
         service = build('drive', 'v3', credentials=creds)
 
         # フォルダIDが渡されていない場合は環境変数から取得
-        if not folder_id:
-            folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
-            if not folder_id:
-                logger.error("GOOGLE_DRIVE_FOLDER_IDが設定されていません")
-                return
+        normalized_folder_ids = list(folder_ids or [])
+        if not normalized_folder_ids:
+            env_ids = os.getenv('GOOGLE_DRIVE_FOLDER_IDS')
+            if env_ids:
+                try:
+                    parsed = json.loads(env_ids)
+                    if isinstance(parsed, list):
+                        normalized_folder_ids.extend([fid for fid in parsed if isinstance(fid, str) and fid])
+                except json.JSONDecodeError:
+                    normalized_folder_ids.extend([fid.strip() for fid in env_ids.split(',') if fid.strip()])
 
-        results = service.files().list(
-            q=f"'{folder_id}' in parents and trashed=false",
-            pageSize=100,
-            fields="files(id, name, mimeType, parents)"
-        ).execute()
+        # 後方互換のため単一フォルダ設定も参照
+        single_env = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        if single_env and single_env not in normalized_folder_ids:
+            normalized_folder_ids.append(single_env)
 
-        folders = results.get('files', [])
-        files_processed = 0
-        errors = []
+        # 重複と空文字を除外
+        deduped_ids: List[str] = []
+        seen_id_set = set()
+        for fid in normalized_folder_ids:
+            if not fid:
+                continue
+            if fid in seen_id_set:
+                continue
+            deduped_ids.append(fid)
+            seen_id_set.add(fid)
+        normalized_folder_ids = deduped_ids
 
-        # フェーズ1: データセットを先に処理（cited_datasetsの参照先を作成）
-        logger.info("Phase 1: データセットの処理開始")
+        if not normalized_folder_ids:
+            logger.error("同期対象フォルダが設定されていません")
+            return
 
-        # folder_type が "all" または "datasets" の場合、全てのフォルダをデータセットとして処理
-        if folder_type in ["all", "datasets"]:
-            logger.info(f"データセットフォルダを処理: {len(folders)}個のサブフォルダ")
-            dataset_files_count = await process_datasets_folder(folders, service)
-            files_processed += dataset_files_count
-        else:
-            # 従来の処理（個別フォルダ指定の場合）
-            for folder in folders:
-                if folder.get('mimeType') == 'application/vnd.google-apps.folder':
-                    folder_name = folder['name']
-                    folder_id_sub = folder['id']
+        total_files_processed = 0
+        aggregated_errors: List[str] = []
+        processed_folders: List[str] = []
 
-                    # フォルダタイプでフィルタ
-                    if folder_name not in [folder_type, f"{folder_type}s"]:
-                        continue
+        for root_folder_id in normalized_folder_ids:
+            files_processed, errors = await sync_root_folder_contents(folder_type, root_folder_id, service)
+            total_files_processed += files_processed
+            if errors:
+                aggregated_errors.extend([f"[{root_folder_id}] {err}" for err in errors])
+            processed_folders.append(root_folder_id)
 
-                    if folder_name == 'datasets':
-                        # フォルダ内のファイルを処理
-                        results = service.files().list(
-                            q=f"'{folder_id_sub}' in parents and trashed=false",
-                            pageSize=100,
-                            fields="files(id, name, mimeType, parents)"
-                        ).execute()
-                        files_in_folder = results.get('files', [])
-                        # datasetsフォルダの場合、サブフォルダを処理
-                        dataset_files_count = await process_datasets_folder(files_in_folder, service)
-                        files_processed += dataset_files_count
-
-        # フェーズ2: 論文・ポスターを処理（cited_datasetsの関連を作成）
-        logger.info("Phase 2: 論文・ポスターの処理開始")
-        for folder in folders:
-            if folder.get('mimeType') == 'application/vnd.google-apps.folder':
-                folder_name = folder['name']
-                folder_id = folder['id']
-
-                # フォルダタイプでフィルタ
-                if folder_type != "all" and folder_name not in [folder_type, f"{folder_type}s"]:
-                    continue
-
-                # フォルダ内のファイルを処理
-                results = service.files().list(
-                    q=f"'{folder_id}' in parents and trashed=false",
-                    pageSize=100,
-                    fields="files(id, name, mimeType, parents)"
-                ).execute()
-                files_in_folder = results.get('files', [])
-
-                if folder_name != 'datasets':
-                    # 通常のフォルダ（paper, poster）の場合
-                    for file in files_in_folder:
-                        if file.get('mimeType') != 'application/vnd.google-apps.folder':
-                            try:
-                                await process_drive_file(file, folder_name, service)
-                                files_processed += 1
-                            except Exception as e:
-                                errors.append(f"{file['name']}: {str(e)}")
-        
-        logger.info(f"Google Drive同期完了: {files_processed}ファイル処理, {len(errors)}エラー")
+        logger.info(
+            f"Google Drive同期完了: {total_files_processed}ファイル処理, "
+            f"{len(aggregated_errors)}エラー, 対象フォルダ: {processed_folders}"
+        )
 
         # 統計情報を更新（キャッシュクリア効果）
         stats = {
@@ -561,18 +540,21 @@ async def perform_google_drive_sync(folder_type: str, folder_id: str):
             "posters": len(poster_repo.find_all()),
             "datasets": len(dataset_repo.find_all())
         }
-        logger.info(f"同期後統計: 論文{stats['papers']}件, ポスター{stats['posters']}件, データセット{stats['datasets']}件")
+        logger.info(
+            f"同期後統計: 論文{stats['papers']}件, "
+            f"ポスター{stats['posters']}件, データセット{stats['datasets']}件"
+        )
 
         admin_metrics.record_event(
             "drive_sync",
-            "success" if not errors else "partial",
-            f"Google Drive同期完了: {files_processed}件処理 (エラー{len(errors)}件)",
+            "success" if not aggregated_errors else "partial",
+            f"Google Drive同期完了: {total_files_processed}件処理 (エラー{len(aggregated_errors)}件)",
             extra={
                 "folder_type": folder_type,
-                "folder_id": source_folder_id,
-                "files_processed": files_processed,
-                "error_count": len(errors),
-                "errors": errors[:10]
+                "folder_ids": processed_folders,
+                "files_processed": total_files_processed,
+                "error_count": len(aggregated_errors),
+                "errors": aggregated_errors[:10]
             }
         )
 
@@ -584,9 +566,84 @@ async def perform_google_drive_sync(folder_type: str, folder_id: str):
             f"Google Drive同期失敗: {str(e)}",
             extra={
                 "folder_type": folder_type,
-                "folder_id": source_folder_id if 'source_folder_id' in locals() else folder_id
+                "folder_ids": folder_ids,
+                "error": str(e)
             }
         )
+
+
+async def sync_root_folder_contents(folder_type: str, root_folder_id: str, service) -> Tuple[int, List[str]]:
+    """指定したルートフォルダ以下のファイル群を同期"""
+    logger.info(f"同期対象フォルダ処理開始: {root_folder_id}")
+
+    results = service.files().list(
+        q=f"'{root_folder_id}' in parents and trashed=false",
+        pageSize=100,
+        fields="files(id, name, mimeType, parents)"
+    ).execute()
+
+    child_entries = results.get('files', [])
+    files_processed = 0
+    errors: List[str] = []
+
+    # フェーズ1: データセットを先に処理（cited_datasetsの参照先を作成）
+    logger.info("Phase 1: データセットの処理開始")
+    if folder_type in ["all", "datasets"]:
+        logger.info(f"データセットフォルダを処理: {len(child_entries)}個のサブフォルダ候補")
+        dataset_files_count = await process_datasets_folder(child_entries, service)
+        files_processed += dataset_files_count
+    else:
+        # 指定タイプのみ処理
+        for entry in child_entries:
+            if entry.get('mimeType') != 'application/vnd.google-apps.folder':
+                continue
+
+            entry_name = entry['name']
+            entry_id = entry['id']
+
+            if entry_name not in [folder_type, f"{folder_type}s"]:
+                continue
+
+            if entry_name == 'datasets':
+                nested_results = service.files().list(
+                    q=f"'{entry_id}' in parents and trashed=false",
+                    pageSize=100,
+                    fields="files(id, name, mimeType, parents)"
+                ).execute()
+                nested_items = nested_results.get('files', [])
+                dataset_files_count = await process_datasets_folder(nested_items, service)
+                files_processed += dataset_files_count
+
+    # フェーズ2: 論文・ポスターを処理（cited_datasetsの関連を作成）
+    logger.info("Phase 2: 論文・ポスターの処理開始")
+    for entry in child_entries:
+        if entry.get('mimeType') != 'application/vnd.google-apps.folder':
+            continue
+
+        entry_name = entry['name']
+        child_folder_id = entry['id']
+
+        if folder_type != "all" and entry_name not in [folder_type, f"{folder_type}s"]:
+            continue
+
+        nested_results = service.files().list(
+            q=f"'{child_folder_id}' in parents and trashed=false",
+            pageSize=100,
+            fields="files(id, name, mimeType, parents)"
+        ).execute()
+        files_in_folder = nested_results.get('files', [])
+
+        if entry_name != 'datasets':
+            for file in files_in_folder:
+                if file.get('mimeType') == 'application/vnd.google-apps.folder':
+                    continue
+                try:
+                    await process_drive_file(file, entry_name, service)
+                    files_processed += 1
+                except Exception as e:
+                    errors.append(f"{file['name']}: {str(e)}")
+
+    return files_processed, errors
 
 async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) -> int:
     """datasetsフォルダ内のサブフォルダを処理"""
@@ -1350,21 +1407,61 @@ async def google_drive_status():
         service = build('drive', 'v3', credentials=creds)
 
         # フォルダ情報取得
-        folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
-        if folder_id:
-            results = service.files().list(
-                q=f"'{folder_id}' in parents and trashed=false",
-                pageSize=100,
-                fields="files(id, name, mimeType)"
-            ).execute()
-            files = results.get('files', [])
-        else:
-            files = []
+        configured_ids: List[str] = []
+        env_ids = os.getenv('GOOGLE_DRIVE_FOLDER_IDS')
+        if env_ids:
+            try:
+                parsed = json.loads(env_ids)
+                if isinstance(parsed, list):
+                    configured_ids.extend([fid for fid in parsed if isinstance(fid, str) and fid])
+            except json.JSONDecodeError:
+                configured_ids.extend([fid.strip() for fid in env_ids.split(',') if fid.strip()])
+
+        single_env = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        if single_env and single_env not in configured_ids:
+            configured_ids.append(single_env)
+
+        child_folder_names: List[str] = []
+        total_children = 0
+        selected_folders: List[Dict[str, str]] = []
+
+        for folder_id in configured_ids:
+            folder_display_name = folder_id
+            try:
+                metadata = service.files().get(
+                    fileId=folder_id,
+                    fields="id, name"
+                ).execute()
+                folder_display_name = metadata.get('name', folder_id)
+            except Exception as e:
+                logger.warning(f"フォルダ情報取得に失敗: {folder_id}: {e}")
+
+            selected_folders.append({
+                "id": folder_id,
+                "name": folder_display_name
+            })
+
+            try:
+                results = service.files().list(
+                    q=f"'{folder_id}' in parents and trashed=false",
+                    pageSize=100,
+                    fields="files(id, name, mimeType)"
+                ).execute()
+                files = results.get('files', [])
+                total_children += len(files)
+                child_folder_names.extend([
+                    f["name"] for f in files
+                    if f.get('mimeType') == 'application/vnd.google-apps.folder'
+                ])
+            except Exception as e:
+                logger.warning(f"フォルダ配下の取得に失敗: {folder_id}: {e}")
 
         return {
             "enabled": True,
-            "file_count": len(files),
-            "folders": [f["name"] for f in files if f.get('mimeType') == 'application/vnd.google-apps.folder']
+            "file_count": total_children,
+            "folders": child_folder_names,
+            "configured_folder_ids": configured_ids,
+            "selected_folders": selected_folders
         }
         
     except Exception as e:
@@ -1605,19 +1702,34 @@ async def list_drive_folders():
 
 
 class SetFolderRequest(BaseModel):
-    folder_id: str
+    folder_ids: Optional[List[str]] = None
+    folder_id: Optional[str] = None
 
 @app.post("/api/drive/set-folder")
 async def set_drive_folder(request: SetFolderRequest):
     """同期対象のフォルダを設定"""
     try:
-        # TODO: データベースまたは設定ファイルに保存
-        # 現在は環境変数として設定
-        os.environ['GOOGLE_DRIVE_FOLDER_ID'] = request.folder_id
+        requested_ids = (request.folder_ids or []) + ([request.folder_id] if request.folder_id else [])
+        normalized_ids: List[str] = []
+        seen = set()
+        for fid in requested_ids:
+            if not fid or fid in seen:
+                continue
+            normalized_ids.append(fid)
+            seen.add(fid)
+
+        if normalized_ids:
+            # TODO: データベースまたは設定ファイルに保存
+            os.environ['GOOGLE_DRIVE_FOLDER_IDS'] = json.dumps(normalized_ids)
+            os.environ['GOOGLE_DRIVE_FOLDER_ID'] = normalized_ids[0]
+        else:
+            os.environ.pop('GOOGLE_DRIVE_FOLDER_IDS', None)
+            os.environ.pop('GOOGLE_DRIVE_FOLDER_ID', None)
 
         return JSONResponse({
             'success': True,
-            'folder_id': request.folder_id
+            'folder_ids': normalized_ids,
+            'primary_folder_id': normalized_ids[0] if normalized_ids else None
         })
 
     except Exception as e:
