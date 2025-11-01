@@ -11,9 +11,12 @@ BASE_DIR = Path(__file__).parent.parent  # プロジェクトルートに移動
 DATA_DIR = BASE_DIR / os.getenv("DATA_DIR_PATH", "data")
 DATABASE_DIR = BASE_DIR / "agent" / "database"
 
-# Google Gemini API設定
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+# OpenRouter API設定（Gemini互換設定からのフォールバックを許可）
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or os.getenv("GEMINI_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL") or os.getenv("GEMINI_MODEL", "openrouter/anthropic/claude-3.5-sonnet")
+OPENROUTER_API_BASE = os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
+OPENROUTER_REFERER = os.getenv("OPENROUTER_REFERER")
+OPENROUTER_TITLE = os.getenv("OPENROUTER_TITLE")
 
 # データベース設定
 DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(DATABASE_DIR / "research_data.db")))
@@ -46,8 +49,8 @@ def validate_config():
     """設定の妥当性を検証"""
     errors = []
     
-    if not GEMINI_API_KEY:
-        errors.append("GEMINI_API_KEY が設定されていません")
+    if not OPENROUTER_API_KEY:
+        errors.append("OPENROUTER_API_KEY（または互換の GEMINI_API_KEY）が設定されていません")
     
     if not DATA_DIR.exists():
         errors.append(f"データディレクトリが存在しません: {DATA_DIR}")

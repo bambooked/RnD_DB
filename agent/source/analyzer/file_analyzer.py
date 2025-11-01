@@ -11,7 +11,7 @@ import pandas as pd
 logging.getLogger('pypdf').setLevel(logging.CRITICAL)
 logging.getLogger('pypdf._cmap').setLevel(logging.CRITICAL)
 
-from .gemini_client import GeminiClient
+from .openrouter_client import OpenRouterClient
 from ..database.models import File, AnalysisResult
 from ..database.repository import FileRepository, AnalysisResultRepository
 
@@ -22,7 +22,7 @@ class FileAnalyzer:
     """ファイル内容を解析するクラス"""
     
     def __init__(self):
-        self.gemini_client = GeminiClient()
+        self.llm_client = OpenRouterClient()
         self.file_repo = FileRepository()
         self.analysis_repo = AnalysisResultRepository()
     
@@ -48,9 +48,9 @@ class FileAnalyzer:
         if not content:
             return None
         
-        # Gemini APIで解析
+        # LLMで解析
         logger.info(f"ファイルを解析中: {file_obj.file_name}")
-        analysis_result = self.gemini_client.analyze_file_content(
+        analysis_result = self.llm_client.analyze_file_content(
             file_obj.file_path, content, file_obj.file_type
         )
         

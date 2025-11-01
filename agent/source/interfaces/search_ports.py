@@ -285,7 +285,7 @@ class SemanticSearchPort(ABC):
             user_context: ユーザーコンテキスト
             
         Claude Code実装時の注意：
-        - クエリの意図理解（Google Gemini API活用）
+        - クエリの意図理解（OpenRouter経由のLLM活用）
         - 検索クエリの自動拡張
         - コンテキストに基づく結果フィルタリング
         """

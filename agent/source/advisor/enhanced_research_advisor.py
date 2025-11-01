@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 from ..database.new_repository import DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
-from ..analyzer.gemini_client import GeminiClient
+from ..analyzer.openrouter_client import OpenRouterClient
 from ..integrations.vector_search import VectorSearchEngine
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class EnhancedResearchAdvisor:
         self.paper_repo = PaperRepository()
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
-        self.gemini_client = GeminiClient()
+        self.llm_client = OpenRouterClient()
         self.vector_engine = VectorSearchEngine()
 
         # 会話履歴管理
@@ -85,7 +85,7 @@ class EnhancedResearchAdvisor:
         
         # LLMで応答を生成
         try:
-            advice = self.gemini_client.generate_research_advice_enhanced(prompt)
+            advice = self.llm_client.generate_research_advice_enhanced(prompt)
             if not advice:
                 # LLM失敗時もDBコンテキストを含めて再試行
                 fallback_prompt = f"""データベース検索に関する質問「{user_query}」に200-400文字で簡潔に回答してください。
@@ -94,7 +94,7 @@ class EnhancedResearchAdvisor:
 {db_context}
 
 上記の情報を活用して具体的で有用な回答を提供してください。"""
-                advice = self.gemini_client.generate_research_advice_enhanced(fallback_prompt)
+                advice = self.llm_client.generate_research_advice_enhanced(fallback_prompt)
                 if not advice:
                     raise Exception("LLM response generation failed")
         except Exception as e:
@@ -107,7 +107,7 @@ class EnhancedResearchAdvisor:
 {db_context}
 
 上記を基に簡潔に回答してください。"""
-                advice = self.gemini_client.generate_research_advice_enhanced(minimal_prompt)
+                advice = self.llm_client.generate_research_advice_enhanced(minimal_prompt)
                 if not advice:
                     raise Exception("Final LLM retry failed")
             except:
@@ -148,7 +148,7 @@ class EnhancedResearchAdvisor:
         
         # LLMで応答を生成
         try:
-            advice = self.gemini_client.generate_research_advice_enhanced(prompt)
+            advice = self.llm_client.generate_research_advice_enhanced(prompt)
             if not advice:
                 # LLM失敗時もコンテキストを含めて再試行
                 fallback_prompt = f"""研究計画に関する質問「{user_query}」に300-500文字で具体的なアドバイスを提供してください。
@@ -157,7 +157,7 @@ class EnhancedResearchAdvisor:
 {planning_context}
 
 上記のリソースを考慮した実践的な研究計画を提案してください。"""
-                advice = self.gemini_client.generate_research_advice_enhanced(fallback_prompt)
+                advice = self.llm_client.generate_research_advice_enhanced(fallback_prompt)
                 if not advice:
                     raise Exception("LLM response generation failed")
         except Exception as e:
@@ -170,7 +170,7 @@ class EnhancedResearchAdvisor:
 {planning_context}
 
 上記を基に研究計画のアドバイスを提供してください。"""
-                advice = self.gemini_client.generate_research_advice_enhanced(minimal_prompt)
+                advice = self.llm_client.generate_research_advice_enhanced(minimal_prompt)
                 if not advice:
                     raise Exception("Final LLM retry failed")
             except:
@@ -228,7 +228,7 @@ class EnhancedResearchAdvisor:
 
         # LLMで応答を生成
         try:
-            advice = self.gemini_client.generate_research_advice_enhanced(prompt)
+            advice = self.llm_client.generate_research_advice_enhanced(prompt)
             if not advice:
                 # LLM失敗時もDBコンテキストを含めて再試行
                 fallback_prompt = f"""研究に関する質問「{user_query}」に150-300文字で簡潔に回答してください。
@@ -237,7 +237,7 @@ class EnhancedResearchAdvisor:
 {db_context}
 
 上記の情報を活用して実用的なアドバイスを提供してください。"""
-                advice = self.gemini_client.generate_research_advice_enhanced(fallback_prompt)
+                advice = self.llm_client.generate_research_advice_enhanced(fallback_prompt)
                 if not advice:
                     raise Exception("LLM response generation failed")
         except Exception as e:
@@ -250,7 +250,7 @@ class EnhancedResearchAdvisor:
 {db_context}
 
 上記を基に簡潔にアドバイスしてください。"""
-                advice = self.gemini_client.generate_research_advice_enhanced(minimal_prompt)
+                advice = self.llm_client.generate_research_advice_enhanced(minimal_prompt)
                 if not advice:
                     raise Exception("Final LLM retry failed")
             except:
@@ -279,7 +279,7 @@ class EnhancedResearchAdvisor:
             # 5. 研究計画立案支援
             research_plan = self._generate_research_plan(query, similar_docs, relevant_datasets)
             
-            # 6. プロンプトを構築してGemini APIで総合的なアドバイスを生成
+            # 6. プロンプトを構築してLLMで総合的なアドバイスを生成
             advice_response = self._generate_comprehensive_advice(
                 query, similar_docs, relevant_datasets, idea_structuring, 
                 None, research_plan, is_initial
@@ -718,25 +718,25 @@ class EnhancedResearchAdvisor:
             recent_history = self.conversation_history[-2:]  # 最近の2つの会話
             context = "前回の相談内容: " + "; ".join([h["user_query"] for h in recent_history])
         
-        # Gemini APIに送るプロンプトを構築
+        # LLMに送るプロンプトを構築
         prompt = self._build_research_advice_prompt(
             query, similar_docs, relevant_datasets, idea_structuring,
             originality_assessment, research_plan, context
         )
         
-        # Gemini APIでアドバイス生成
+        # LLMでアドバイス生成
         try:
-            advice_text = self.gemini_client.generate_research_advice_enhanced(prompt)
+            advice_text = self.llm_client.generate_research_advice_enhanced(prompt)
             if not advice_text:
                 # LLM失敗時も動的に生成
-                advice_text = self.gemini_client.generate_research_advice_enhanced(f"研究に関する質問「{query}」に具体的で実践的なアドバイスを提供してください。簡潔で有用な内容にしてください。")
+                advice_text = self.llm_client.generate_research_advice_enhanced(f"研究に関する質問「{query}」に具体的で実践的なアドバイスを提供してください。簡潔で有用な内容にしてください。")
                 if not advice_text:
                     raise Exception("LLM response generation failed")
         except Exception as e:
-            logger.error(f"Gemini API呼び出しエラー: {e}")
+            logger.error(f"LLM API呼び出しエラー: {e}")
             # 最後の手段として簡単なプロンプトでリトライ
             try:
-                advice_text = self.gemini_client.generate_research_advice_enhanced(f"「{query}」について研究のアドバイスを教えてください。")
+                advice_text = self.llm_client.generate_research_advice_enhanced(f"「{query}」について研究のアドバイスを教えてください。")
                 if not advice_text:
                     raise Exception("Final LLM retry failed")
             except:

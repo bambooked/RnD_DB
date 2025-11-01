@@ -43,7 +43,7 @@ from agent.source.database.new_models import Dataset, Paper, Poster, DatasetFile
 from agent.source.advisor.enhanced_research_advisor import EnhancedResearchAdvisor
 from agent.source.advisor.dataset_advisor import DatasetAdvisor
 from agent.source.integrations.looker_export import LookerDataExporter
-from agent.source.analyzer.gemini_client import GeminiClient
+from agent.source.analyzer.openrouter_client import OpenRouterClient
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)
@@ -70,7 +70,7 @@ auth_manager = AuthenticationManager()
 enhanced_advisor = EnhancedResearchAdvisor()
 dataset_advisor = DatasetAdvisor()
 looker_exporter = LookerDataExporter(google_drive) if google_drive else None
-gemini_client = GeminiClient()
+llm_client = OpenRouterClient()
 
 # ベクトル検索関連
 from agent.source.integrations.vector_search import VectorSearchEngine
@@ -442,7 +442,7 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                 dataset_description = None
                 if len(dataset_file_list) > 0:
                     logger.info(f"データセット解説生成開始: {dataset_name}")
-                    dataset_description = gemini_client.generate_dataset_description(
+                    dataset_description = llm_client.generate_dataset_description(
                         dataset_name,
                         [{'name': f['name'], 'type': f['mime_type'], 'size': f['size']} for f in dataset_file_list]
                     )
@@ -535,10 +535,10 @@ async def analyze_dataset_file(file_id: str, file_name: str, file_type: str, ser
                     'null_counts': df.isnull().sum().to_dict()
                 }
 
-                # Gemini APIでサマリーを生成
+                # LLMでサマリーを生成（必要に応じて利用）
                 content_preview = f"Columns: {', '.join(df.columns)}\n\nFirst 10 rows:\n{df.head(10).to_string()}"
 
-                # 簡易的な要約（Gemini APIなしで生成）
+                # 簡易的な要約（LLMなしで生成）
                 summary = f"CSV file with {len(df.columns)} columns: {', '.join(list(df.columns)[:5])}"
                 if len(df.columns) > 5:
                     summary += f" and {len(df.columns) - 5} more"
@@ -571,7 +571,7 @@ async def analyze_dataset_file(file_id: str, file_name: str, file_type: str, ser
                             }
                         content_preview = json.dumps(data, indent=2, ensure_ascii=False)[:5000]
 
-                # 簡易的な要約（Gemini APIなしで生成）
+                # 簡易的な要約（LLMなしで生成）
                 if schema_info.get('format') == 'jsonl':
                     summary = f"JSONL file with {schema_info.get('line_count_sample', 0)} lines"
                     if schema_info.get('sample_keys'):
@@ -636,8 +636,8 @@ def save_cited_datasets(item_id: int, cited_datasets: List[str], item_type: str 
                             paper_id=item_id,
                             dataset_id=dataset.id,
                             relation_type='cited',
-                            confidence=0.8,  # Gemini APIからの抽出なので少し低めの信頼度
-                            notes=f'Extracted from PDF content by Gemini API'
+                            confidence=0.8,  # LLMからの抽出なので少し低めの信頼度
+                            notes='Extracted from PDF content by LLM (OpenRouter)'
                         )
                         paper_dataset_rel_repo.create(relation)
                         logger.info(f"論文-データセット関連を保存: Paper#{item_id} -> {dataset_name}")
@@ -649,7 +649,7 @@ def save_cited_datasets(item_id: int, cited_datasets: List[str], item_type: str 
                             dataset_id=dataset.id,
                             relation_type='cited',
                             confidence=0.8,
-                            notes=f'Extracted from PDF content by Gemini API'
+                            notes='Extracted from PDF content by LLM (OpenRouter)'
                         )
                         poster_dataset_rel_repo.create(relation)
                         logger.info(f"ポスター-データセット関連を保存: Poster#{item_id} -> {dataset_name}")
@@ -698,9 +698,9 @@ async def analyze_pdf_content(file_id: str, file_name: str, service) -> Dict[str
 
             full_text = "\n\n".join(text_content)
 
-            # Gemini APIで解析
+            # LLMで解析
             if full_text.strip():
-                analysis = gemini_client.analyze_paper_metadata(file_name, full_text[:10000])  # 最初の10000文字
+                analysis = llm_client.analyze_paper_metadata(file_name, full_text[:10000])  # 最初の10000文字
                 if analysis and isinstance(analysis, dict):
                     logger.info(f"PDF解析完了: {file_name}")
                     # 必須フィールドの確認と補完

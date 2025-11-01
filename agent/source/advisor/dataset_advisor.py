@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 
 from ..database.new_repository import DatasetRepository, DatasetFileRepository
-from ..analyzer.gemini_client import GeminiClient
+from ..analyzer.openrouter_client import OpenRouterClient
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class DatasetAdvisor:
     def __init__(self):
         self.dataset_repo = DatasetRepository()
         self.dataset_file_repo = DatasetFileRepository()
-        self.gemini_client = GeminiClient()
+        self.llm_client = OpenRouterClient()
     
     def explain_dataset(self, dataset_name: str, user_question: str = "") -> Dict[str, Any]:
         """データセットの詳細解説"""
@@ -45,7 +45,7 @@ class DatasetAdvisor:
             # 基本情報を構築
             basic_info = self._build_dataset_basic_info(target_dataset, dataset_files)
             
-            # ユーザーの質問がある場合はGemini APIで詳細解説を生成
+            # ユーザーの質問がある場合はLLMで詳細解説を生成
             detailed_explanation = ""
             if user_question:
                 detailed_explanation = self._generate_detailed_explanation(
@@ -145,13 +145,13 @@ class DatasetAdvisor:
             return "alphabetic"
     
     def _generate_detailed_explanation(self, dataset, dataset_files: List, user_question: str) -> str:
-        """詳細解説をGemini APIで生成"""
+        """詳細解説をLLMで生成"""
         try:
             # データセット情報をまとめる
             dataset_summary = dataset.summary or dataset.description or "詳細情報なし"
             
-            # Gemini APIを呼び出し
-            explanation = self.gemini_client.analyze_dataset_context(
+            # LLMを呼び出し
+            explanation = self.llm_client.analyze_dataset_context(
                 dataset.name, 
                 dataset_summary, 
                 user_question
