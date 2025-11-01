@@ -124,16 +124,27 @@
                     </div>
                 </div>
                 
+                <!-- 関連ファイル・フォルダ表示エリア -->
+                <div id="related-items-section" class="hidden mt-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                    <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center">
+                        <i class="fas fa-link text-blue-600 mr-2"></i>
+                        提案されたファイル・フォルダ
+                    </h3>
+                    <div id="related-items-content" class="space-y-2">
+                        <!-- 動的に生成されます -->
+                    </div>
+                </div>
+
                 <!-- 入力エリア -->
                 <div class="space-y-3">
                     <div class="flex space-x-2">
-                        <input type="text" 
-                               id="chat-input" 
-                               class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" 
-                               placeholder="研究について質問してください..." 
+                        <input type="text"
+                               id="chat-input"
+                               class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                               placeholder="研究について質問してください..."
                                onkeypress="handleChatKeyPress(event)">
-                        <button id="chat-send-button" 
-                                onclick="sendChatMessage()" 
+                        <button id="chat-send-button"
+                                onclick="sendChatMessage()"
                                 class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors duration-200 flex items-center disabled:bg-gray-400">
                             <i class="fas fa-paper-plane mr-1"></i>
                             送信
@@ -464,6 +475,12 @@
                     </div>
                 </div>
             `;
+
+            // 関連アイテムセクションも非表示
+            const relatedSection = document.getElementById('related-items-section');
+            if (relatedSection) {
+                relatedSection.classList.add('hidden');
+            }
         }
 
         // チャットメッセージ送信
@@ -527,12 +544,18 @@
                 });
                 
                 const data = await response.json();
-                
+                console.log('API Response:', data);
+
                 // 入力中インジケーター削除
                 document.getElementById('typing-indicator').remove();
-                
+
                 // AIレスポンスを追加
                 addChatMessage('ai', data.advice, data);
+
+                // 関連ファイル・フォルダを下部セクションに表示
+                console.log('Calling updateRelatedItems...');
+                updateRelatedItems(data);
+                console.log('updateRelatedItems completed');
                 
             } catch (error) {
                 console.error('チャットエラー:', error);
@@ -637,6 +660,109 @@
         function formatResponse(text) {
             // 改行を<br>に変換
             return escapeHtml(text).replace(/\n/g, '<br>');
+        }
+
+        // 関連ファイル・フォルダの表示更新
+        function updateRelatedItems(data) {
+            console.log('updateRelatedItems called with data:', data);
+            const section = document.getElementById('related-items-section');
+            const content = document.getElementById('related-items-content');
+            console.log('Section element:', section);
+            console.log('Content element:', content);
+
+            // 関連文書と関連データセットをチェック
+            const hasRelatedDocs = data.related_documents && data.related_documents.length > 0;
+            const hasRelevantDatasets = data.relevant_datasets && data.relevant_datasets.length > 0;
+            console.log('hasRelatedDocs:', hasRelatedDocs, 'hasRelevantDatasets:', hasRelevantDatasets);
+
+            if (!hasRelatedDocs && !hasRelevantDatasets) {
+                console.log('No related items, hiding section');
+                section.classList.add('hidden');
+                return;
+            }
+
+            console.log('Has related items, building HTML...');
+
+            let html = '';
+
+            // 関連文書（論文・ポスター）を表示
+            if (hasRelatedDocs) {
+                html += '<div class="mb-3">';
+                html += '<h4 class="text-xs font-semibold text-gray-700 mb-2"><i class="fas fa-file-alt text-blue-500 mr-1"></i>関連文書</h4>';
+                html += '<div class="grid grid-cols-1 gap-2">';
+
+                data.related_documents.forEach(doc => {
+                    const icon = doc.type === 'paper' ? 'fa-file-alt' : 'fa-image';
+                    const iconColor = doc.type === 'paper' ? 'text-blue-600' : 'text-green-600';
+                    const title = doc.title || doc.file_name || '無題';
+
+                    html += `
+                        <div class="bg-white border border-gray-300 rounded-md p-3 hover:shadow-md transition-shadow">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center mb-1">
+                                        <i class="fas ${icon} ${iconColor} text-sm mr-2"></i>
+                                        <span class="font-medium text-gray-800 text-sm">${escapeHtml(title)}</span>
+                                    </div>
+                                    ${doc.authors ? `<p class="text-xs text-gray-600 ml-6 mb-1">著者: ${escapeHtml(doc.authors)}</p>` : ''}
+                                    ${doc.abstract ? `<p class="text-xs text-gray-500 ml-6">${escapeHtml(doc.abstract.substring(0, 100))}...</p>` : ''}
+                                </div>
+                                ${doc.drive_url ? `
+                                    <a href="${doc.drive_url}" target="_blank"
+                                       class="ml-2 px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors text-xs font-medium flex items-center">
+                                        <i class="fas fa-external-link-alt mr-1"></i>開く
+                                    </a>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div></div>';
+            }
+
+            // 関連データセットを表示
+            if (hasRelevantDatasets) {
+                html += '<div>';
+                html += '<h4 class="text-xs font-semibold text-gray-700 mb-2"><i class="fas fa-database text-purple-500 mr-1"></i>関連データセット</h4>';
+                html += '<div class="grid grid-cols-1 gap-2">';
+
+                data.relevant_datasets.forEach(ds => {
+                    const name = ds.name || '無題';
+                    const fileCountText = ds.file_count ? `${ds.file_count}ファイル` : '';
+                    const sizeMB = ds.total_size ? (ds.total_size / (1024 * 1024)).toFixed(1) : '0';
+
+                    html += `
+                        <div class="bg-white border border-gray-300 rounded-md p-3 hover:shadow-md transition-shadow">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center mb-1">
+                                        <i class="fas fa-database text-purple-600 text-sm mr-2"></i>
+                                        <span class="font-medium text-gray-800 text-sm">${escapeHtml(name)}</span>
+                                    </div>
+                                    ${ds.description ? `<p class="text-xs text-gray-600 ml-6 mb-1">${escapeHtml(ds.description)}</p>` : ''}
+                                    ${ds.summary ? `<p class="text-xs text-gray-500 ml-6 mb-1">${escapeHtml(ds.summary.substring(0, 100))}...</p>` : ''}
+                                    <p class="text-xs text-gray-500 ml-6">
+                                        <i class="fas fa-folder text-xs mr-1"></i>${fileCountText}
+                                        <i class="fas fa-hdd text-xs ml-2 mr-1"></i>${sizeMB} MB
+                                    </p>
+                                </div>
+                                ${ds.drive_url ? `
+                                    <a href="${ds.drive_url}" target="_blank"
+                                       class="ml-2 px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors text-xs font-medium flex items-center">
+                                        <i class="fas fa-external-link-alt mr-1"></i>開く
+                                    </a>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div></div>';
+            }
+
+            content.innerHTML = html;
+            section.classList.remove('hidden');
         }
 
         // データベース概要表示

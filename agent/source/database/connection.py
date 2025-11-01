@@ -52,7 +52,9 @@ class DatabaseConnection:
             total_size INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            summary TEXT
+            summary TEXT,
+            drive_folder_id TEXT,
+            drive_url TEXT
         );
 
         -- papers テーブル（論文）
@@ -68,7 +70,9 @@ class DatabaseConnection:
             authors TEXT,
             abstract TEXT,
             keywords TEXT,
-            content_hash TEXT
+            content_hash TEXT,
+            drive_file_id TEXT,
+            drive_url TEXT
         );
 
         -- posters テーブル（ポスター）
@@ -84,7 +88,9 @@ class DatabaseConnection:
             authors TEXT,
             abstract TEXT,
             keywords TEXT,
-            content_hash TEXT
+            content_hash TEXT,
+            drive_file_id TEXT,
+            drive_url TEXT
         );
 
         -- dataset_files テーブル（データセット内のファイル）
@@ -101,6 +107,8 @@ class DatabaseConnection:
             content_hash TEXT,
             schema_info TEXT,
             summary TEXT,
+            drive_file_id TEXT,
+            drive_url TEXT,
             FOREIGN KEY (dataset_id) REFERENCES datasets (id) ON DELETE CASCADE
         );
 

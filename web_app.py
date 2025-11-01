@@ -139,6 +139,7 @@ load_credentials()
 # リクエスト/レスポンスモデル
 class GoogleDriveSyncRequest(BaseModel):
     folder_type: str  # "all", "datasets", "papers", "posters"
+    folder_id: str  # Google Drive folder ID to sync
 
 class SearchRequest(BaseModel):
     query: str
@@ -243,7 +244,7 @@ async def sync_google_drive(request: GoogleDriveSyncRequest, background_tasks: B
 
     try:
         # バックグラウンドで同期実行
-        background_tasks.add_task(perform_google_drive_sync, request.folder_type)
+        background_tasks.add_task(perform_google_drive_sync, request.folder_type, request.folder_id)
 
         return SyncResponse(
             success=True,
@@ -254,10 +255,10 @@ async def sync_google_drive(request: GoogleDriveSyncRequest, background_tasks: B
         logger.error(f"Google Drive同期エラー: {e}")
         raise HTTPException(status_code=500, detail=f"同期エラー: {str(e)}")
 
-async def perform_google_drive_sync(folder_type: str):
+async def perform_google_drive_sync(folder_type: str, folder_id: str):
     """Google Drive同期の実際の処理"""
     try:
-        logger.info(f"Google Drive同期開始: {folder_type}")
+        logger.info(f"Google Drive同期開始: {folder_type}, folder_id: {folder_id}")
 
         if 'default' not in user_credentials:
             logger.error("認証情報がありません")
@@ -267,11 +268,12 @@ async def perform_google_drive_sync(folder_type: str):
         creds = user_credentials['default']
         service = build('drive', 'v3', credentials=creds)
 
-        # フォルダ内のファイルを取得
-        folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        # フォルダIDが渡されていない場合は環境変数から取得
         if not folder_id:
-            logger.error("GOOGLE_DRIVE_FOLDER_IDが設定されていません")
-            return
+            folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+            if not folder_id:
+                logger.error("GOOGLE_DRIVE_FOLDER_IDが設定されていません")
+                return
 
         results = service.files().list(
             q=f"'{folder_id}' in parents and trashed=false",
@@ -285,26 +287,34 @@ async def perform_google_drive_sync(folder_type: str):
 
         # フェーズ1: データセットを先に処理（cited_datasetsの参照先を作成）
         logger.info("Phase 1: データセットの処理開始")
-        for folder in folders:
-            if folder.get('mimeType') == 'application/vnd.google-apps.folder':
-                folder_name = folder['name']
-                folder_id = folder['id']
 
-                # フォルダタイプでフィルタ
-                if folder_type != "all" and folder_name not in [folder_type, f"{folder_type}s"]:
-                    continue
+        # folder_type が "all" または "datasets" の場合、全てのフォルダをデータセットとして処理
+        if folder_type in ["all", "datasets"]:
+            logger.info(f"データセットフォルダを処理: {len(folders)}個のサブフォルダ")
+            dataset_files_count = await process_datasets_folder(folders, service)
+            files_processed += dataset_files_count
+        else:
+            # 従来の処理（個別フォルダ指定の場合）
+            for folder in folders:
+                if folder.get('mimeType') == 'application/vnd.google-apps.folder':
+                    folder_name = folder['name']
+                    folder_id_sub = folder['id']
 
-                if folder_name == 'datasets':
-                    # フォルダ内のファイルを処理
-                    results = service.files().list(
-                        q=f"'{folder_id}' in parents and trashed=false",
-                        pageSize=100,
-                        fields="files(id, name, mimeType, parents)"
-                    ).execute()
-                    files_in_folder = results.get('files', [])
-                    # datasetsフォルダの場合、サブフォルダを処理
-                    dataset_files_count = await process_datasets_folder(files_in_folder, service)
-                    files_processed += dataset_files_count
+                    # フォルダタイプでフィルタ
+                    if folder_name not in [folder_type, f"{folder_type}s"]:
+                        continue
+
+                    if folder_name == 'datasets':
+                        # フォルダ内のファイルを処理
+                        results = service.files().list(
+                            q=f"'{folder_id_sub}' in parents and trashed=false",
+                            pageSize=100,
+                            fields="files(id, name, mimeType, parents)"
+                        ).execute()
+                        files_in_folder = results.get('files', [])
+                        # datasetsフォルダの場合、サブフォルダを処理
+                        dataset_files_count = await process_datasets_folder(files_in_folder, service)
+                        files_processed += dataset_files_count
 
         # フェーズ2: 論文・ポスターを処理（cited_datasetsの関連を作成）
         logger.info("Phase 2: 論文・ポスターの処理開始")
@@ -409,6 +419,9 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                                     dataset_file_repo.update(existing_file)
                                     logger.info(f"データセットファイル情報更新: {file_info['name']}")
                             else:
+                                # Google Drive URL を生成
+                                drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
+
                                 # 新規ファイル登録
                                 dataset_file = DatasetFile(
                                     dataset_id=existing_dataset.id,
@@ -417,7 +430,9 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                                     file_type=extension,
                                     file_size=file_info['size'],
                                     schema_info=file_analysis['schema_info'],
-                                    summary=file_analysis['summary']
+                                    summary=file_analysis['summary'],
+                                    drive_file_id=file_info['id'],
+                                    drive_url=drive_url
                                 )
                                 dataset_file_repo.create(dataset_file)
                                 logger.info(f"データセットファイル登録: {file_info['name']}")
@@ -431,6 +446,9 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                         dataset_name,
                         [{'name': f['name'], 'type': f['mime_type'], 'size': f['size']} for f in dataset_file_list]
                     )
+
+                # データセットフォルダのGoogle Drive URL
+                dataset_folder_url = f"https://drive.google.com/drive/folders/{dataset_folder_id}"
 
                 if existing_dataset:
                     # 既存データセットの更新
@@ -448,6 +466,16 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                         needs_update = True
                         logger.info(f"データセット解説を追加: {dataset_name}")
 
+                    # drive_url が無い場合は追加
+                    logger.info(f"データセット {dataset_name} の drive_folder_id 確認: {existing_dataset.drive_folder_id}")
+                    if not existing_dataset.drive_folder_id:
+                        logger.info(f"drive_url を設定: {dataset_folder_url}")
+                        existing_dataset.drive_folder_id = dataset_folder_id
+                        existing_dataset.drive_url = dataset_folder_url
+                        needs_update = True
+                    else:
+                        logger.info(f"drive_folder_id 既に存在: {existing_dataset.drive_folder_id}")
+
                     if needs_update:
                         dataset_repo.update(existing_dataset)
                         logger.info(f"データセット更新: {dataset_name} ({len(dataset_file_list)}ファイル)")
@@ -458,7 +486,9 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                         description=f"Google Driveから同期: {len(dataset_file_list)}ファイル",
                         file_count=len(dataset_file_list),
                         total_size=total_size,
-                        summary=dataset_description if dataset_description else None
+                        summary=dataset_description if dataset_description else None,
+                        drive_folder_id=dataset_folder_id,
+                        drive_url=dataset_folder_url
                     )
                     dataset_repo.create(new_dataset)
                     logger.info(f"データセット新規作成: {dataset_name} ({len(dataset_file_list)}ファイル)")
@@ -763,6 +793,9 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str, service):
                 logger.info(f"論文情報更新: {file_info['name']}")
                 return
 
+            # Google Drive URL を生成
+            drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
+
             # 論文として登録
             paper = Paper(
                 file_path=drive_file_path,
@@ -771,7 +804,9 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str, service):
                 authors=metadata.get('authors', ''),
                 abstract=metadata.get('abstract', ''),
                 keywords=metadata.get('keywords', ''),
-                file_size=int(file_info.get('size', 0))
+                file_size=int(file_info.get('size', 0)),
+                drive_file_id=file_info['id'],
+                drive_url=drive_url
             )
             paper_repo.create(paper)
 
@@ -822,6 +857,9 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str, service):
                 logger.info(f"ポスター情報更新: {file_info['name']}")
                 return
 
+            # Google Drive URL を生成
+            drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
+
             # ポスターとして登録
             poster = Poster(
                 file_path=drive_file_path,
@@ -830,7 +868,9 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str, service):
                 authors=metadata.get('authors', ''),
                 abstract=metadata.get('abstract', ''),
                 keywords=metadata.get('keywords', ''),
-                file_size=int(file_info.get('size', 0))
+                file_size=int(file_info.get('size', 0)),
+                drive_file_id=file_info['id'],
+                drive_url=drive_url
             )
             poster_repo.create(poster)
 
@@ -872,7 +912,8 @@ async def search_research_data(request: SearchRequest):
                         "file_name": paper.file_name,
                         "authors": paper.authors,
                         "abstract": paper.abstract,
-                        "file_size": paper.file_size
+                        "file_size": paper.file_size,
+                        "drive_url": paper.drive_url
                     })
         
         if request.search_type in ["all", "posters"]:
@@ -887,7 +928,8 @@ async def search_research_data(request: SearchRequest):
                         "file_name": poster.file_name,
                         "authors": poster.authors,
                         "abstract": poster.abstract,
-                        "file_size": poster.file_size
+                        "file_size": poster.file_size,
+                        "drive_url": poster.drive_url
                     })
         
         if request.search_type in ["all", "datasets"]:
@@ -900,7 +942,8 @@ async def search_research_data(request: SearchRequest):
                         "name": dataset.name,
                         "description": dataset.description,
                         "file_count": dataset.file_count,
-                        "total_size": dataset.total_size
+                        "total_size": dataset.total_size,
+                        "drive_url": dataset.drive_url
                     })
         
         return SearchResponse(
@@ -965,7 +1008,8 @@ async def get_database_summary():
                 "abstract": p.abstract[:200] + "..." if p.abstract and len(p.abstract) > 200 else p.abstract,
                 "keywords": p.keywords,
                 "file_size": p.file_size,
-                "cited_datasets": cited_datasets
+                "cited_datasets": cited_datasets,
+                "drive_url": p.drive_url
             })
 
         # ポスター情報（引用データセット含む）
@@ -992,7 +1036,8 @@ async def get_database_summary():
                 "abstract": p.abstract[:200] + "..." if p.abstract and len(p.abstract) > 200 else p.abstract,
                 "keywords": p.keywords,
                 "file_size": p.file_size,
-                "cited_datasets": cited_datasets
+                "cited_datasets": cited_datasets,
+                "drive_url": p.drive_url
             })
 
         # データセット情報（引用元の論文・ポスター含む）
@@ -1031,7 +1076,8 @@ async def get_database_summary():
                 "total_size": d.total_size,
                 "total_size_mb": round(d.total_size / (1024 * 1024), 2) if d.total_size else 0,
                 "cited_by_papers": citing_papers,
-                "cited_by_posters": citing_posters
+                "cited_by_posters": citing_posters,
+                "drive_url": d.drive_url
             })
         
         return {

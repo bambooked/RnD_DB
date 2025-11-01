@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(uv run python:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": [],
     "ask": []
