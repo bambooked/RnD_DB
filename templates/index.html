@@ -560,13 +560,32 @@
                     console.warn('フォルダIDの解析に失敗しました:', error);
                 }
             }
-            
+
+            // 認証状態を確認
+            try {
+                const authStatusResponse = await fetch('/api/auth/google/status');
+                const authStatus = await authStatusResponse.json();
+
+                if (!authStatus.authenticated) {
+                    result.className = 'p-3 rounded-md bg-yellow-100 border border-yellow-300 text-yellow-700';
+                    result.innerHTML = `<i class="fas fa-exclamation-triangle mr-2"></i>Google Drive認証が必要です。まず「Google認証」ボタンから認証を行ってください。`;
+                    result.classList.remove('hidden');
+                    return;
+                }
+            } catch (error) {
+                console.error('認証状態確認エラー:', error);
+                result.className = 'p-3 rounded-md bg-red-100 border border-red-300 text-red-700';
+                result.innerHTML = `<i class="fas fa-times mr-2"></i>認証状態の確認に失敗しました`;
+                result.classList.remove('hidden');
+                return;
+            }
+
             // UI更新
             button.disabled = true;
             text.style.display = 'none';
             loading.classList.add('show');
             result.classList.add('hidden');
-            
+
             try {
                 const payload = { folder_type: folderType };
                 if (selectedFolderIds.length > 0) {
@@ -580,7 +599,7 @@
                     },
                     body: JSON.stringify(payload)
                 });
-                
+
                 const data = await response.json();
                 
                 if (data.success) {

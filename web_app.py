@@ -95,28 +95,80 @@ oauth_sessions = {}
 user_credentials = {}
 
 # 認証情報の永続化パス
-TOKEN_PATH = 'credentials/google_oauth_token.json'
+TOKEN_PATH = 'credentials/google_drive_credentials_token.json'
 
 # 起動時に既存のトークンを読み込む
 def load_credentials():
     """保存されている認証情報を読み込む"""
+    logger.info(f"トークンファイルを読み込み試行: {TOKEN_PATH}")
+    logger.info(f"ファイル存在確認: {os.path.exists(TOKEN_PATH)}")
+
     if os.path.exists(TOKEN_PATH):
         try:
             with open(TOKEN_PATH, 'r') as f:
                 token_data = json.load(f)
+
+            logger.info(f"トークンデータキー: {list(token_data.keys())}")
+
+            # expiryフィールドを含めてCredentialsオブジェクトを作成
+            from datetime import datetime, timezone
+            expiry = None
+            if 'expiry' in token_data:
+                try:
+                    # タイムゾーンを除去してnaiveなdatetimeとして扱う
+                    expiry_str = token_data['expiry'].replace('Z', '')
+                    if '+' in expiry_str or expiry_str.count('-') > 2:
+                        # タイムゾーン情報がある場合は除去
+                        expiry = datetime.fromisoformat(token_data['expiry'].replace('Z', '+00:00')).replace(tzinfo=None)
+                    else:
+                        expiry = datetime.fromisoformat(expiry_str)
+                    logger.info(f"トークン有効期限: {expiry}")
+                except Exception as e:
+                    logger.warning(f"有効期限のパースエラー: {e}")
+
             creds = Credentials(
                 token=token_data.get('token'),
                 refresh_token=token_data.get('refresh_token'),
                 token_uri=token_data.get('token_uri'),
                 client_id=token_data.get('client_id'),
                 client_secret=token_data.get('client_secret'),
-                scopes=token_data.get('scopes')
+                scopes=token_data.get('scopes'),
+                expiry=expiry
             )
+
+            # トークンの有効性チェックとリフレッシュ
+            try:
+                is_expired = creds.expired if hasattr(creds, 'expired') else False
+            except TypeError:
+                # タイムゾーン比較エラーの場合は手動で確認
+                from datetime import datetime
+                if expiry:
+                    is_expired = datetime.utcnow() >= expiry
+                else:
+                    is_expired = True
+
+            if is_expired and creds.refresh_token:
+                logger.info("トークンが期限切れです。リフレッシュを試行します...")
+                try:
+                    from google.auth.transport.requests import Request
+                    creds.refresh(Request())
+                    save_credentials(creds)
+                    logger.info("トークンリフレッシュ成功")
+                except Exception as refresh_error:
+                    logger.error(f"トークンリフレッシュ失敗: {refresh_error}")
+                    logger.error("新しい認証が必要です。/api/auth/google/loginから認証を行ってください。")
+                    return False
+
             user_credentials['default'] = creds
-            logger.info("保存された認証情報を読み込みました")
+            logger.info(f"保存された認証情報を読み込みました: {TOKEN_PATH}")
+            logger.info(f"user_credentialsに格納: keys={list(user_credentials.keys())}")
             return True
         except Exception as e:
             logger.error(f"認証情報の読み込みエラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    else:
+        logger.warning(f"トークンファイルが見つかりません: {TOKEN_PATH}")
     return False
 
 def save_credentials(creds):
@@ -131,11 +183,18 @@ def save_credentials(creds):
             'client_secret': creds.client_secret,
             'scopes': creds.scopes
         }
+
+        # expiryフィールドも保存
+        if hasattr(creds, 'expiry') and creds.expiry:
+            token_data['expiry'] = creds.expiry.isoformat()
+
         with open(TOKEN_PATH, 'w') as f:
-            json.dump(token_data, f)
-        logger.info("認証情報を保存しました")
+            json.dump(token_data, f, indent=2)
+        logger.info(f"認証情報を保存しました: {TOKEN_PATH}")
     except Exception as e:
         logger.error(f"認証情報の保存エラー: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 # 起動時に認証情報を読み込む
 load_credentials()
@@ -447,6 +506,12 @@ async def get_admin_overview():
 @app.post("/api/sync/google-drive", response_model=SyncResponse)
 async def sync_google_drive(request: GoogleDriveSyncRequest, background_tasks: BackgroundTasks):
     """Google Drive同期API"""
+    # 認証情報がない場合、トークンファイルから再読み込み
+    if 'default' not in user_credentials:
+        logger.info("認証情報が見つかりません。トークンファイルを再読み込みします...")
+        load_credentials()
+
+    # 再読み込み後も認証情報がない場合はエラー
     if 'default' not in user_credentials:
         raise HTTPException(status_code=401, detail="Google認証が必要です")
 
@@ -1644,9 +1709,30 @@ async def google_auth_status():
     """Google認証状態を確認"""
     try:
         logger.info(f"Checking auth status. user_credentials keys: {list(user_credentials.keys())}")
+
+        # トークンファイルから再読み込み
+        if 'default' not in user_credentials:
+            logger.info("認証情報が見つかりません。トークンファイルを再読み込みします...")
+            load_credentials()
+
         if 'default' in user_credentials:
             creds = user_credentials['default']
             logger.info(f"User authenticated. Creds type: {type(creds)}")
+
+            # トークンの有効性チェックとリフレッシュ
+            try:
+                if hasattr(creds, 'expired') and hasattr(creds, 'refresh_token'):
+                    if creds.expired and creds.refresh_token:
+                        logger.info("トークンが期限切れです。リフレッシュします...")
+                        from google.auth.transport.requests import Request
+                        creds.refresh(Request())
+                        save_credentials(creds)
+                        user_credentials['default'] = creds
+                        logger.info("トークンリフレッシュ完了")
+            except Exception as refresh_error:
+                logger.warning(f"トークンリフレッシュエラー: {refresh_error}")
+                # リフレッシュ失敗しても、トークンが有効な可能性があるので続行
+
             return JSONResponse({
                 'authenticated': True,
                 'email': 'authenticated_user'
