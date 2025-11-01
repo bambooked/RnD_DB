@@ -13,20 +13,22 @@ import numpy as np
 
 from ..database.new_repository import DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
 from ..analyzer.gemini_client import GeminiClient
+from ..integrations.vector_search import VectorSearchEngine
 
 logger = logging.getLogger(__name__)
 
 
 class EnhancedResearchAdvisor:
     """拡張研究相談機能を提供するクラス"""
-    
+
     def __init__(self):
         self.dataset_repo = DatasetRepository()
         self.paper_repo = PaperRepository()
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
         self.gemini_client = GeminiClient()
-        
+        self.vector_engine = VectorSearchEngine()
+
         # 会話履歴管理
         self.conversation_history: List[Dict[str, Any]] = []
         
@@ -120,7 +122,8 @@ class EnhancedResearchAdvisor:
                 "description": ds.description or "",
                 "summary": ds.summary or "",
                 "file_count": ds.file_count,
-                "total_size": ds.total_size
+                "total_size": ds.total_size,
+                "drive_url": ds.drive_url
             })
         
         return {
@@ -198,10 +201,14 @@ class EnhancedResearchAdvisor:
         datasets = self.dataset_repo.find_all()
         papers = self.paper_repo.find_all()
         posters = self.poster_repo.find_all()
-        
+
         # データベース情報をLLM用のコンテキストとして構築
         db_context = self._build_database_context(datasets, papers, posters)
-        
+
+        # 関連文書と関連データセットを検索
+        related_documents = self._find_similar_documents_enhanced(user_query, top_k=3)
+        relevant_datasets = self._find_relevant_datasets(user_query)
+
         # 詳細なプロンプト
         prompt = f"""研究に関する質問に簡潔に回答してください。
 
@@ -218,7 +225,7 @@ class EnhancedResearchAdvisor:
 - 次のアクションを含める
 
 回答:"""
-        
+
         # LLMで応答を生成
         try:
             advice = self.gemini_client.generate_research_advice_enhanced(prompt)
@@ -248,11 +255,11 @@ class EnhancedResearchAdvisor:
                     raise Exception("Final LLM retry failed")
             except:
                 advice = "申し訳ございません。現在システムの調子が悪く、適切な回答を生成できません。しばらく時間をおいて再度お試しください。"
-        
+
         return {
             "advice": advice,
-            "related_documents": [],
-            "relevant_datasets": [],
+            "related_documents": related_documents,
+            "relevant_datasets": relevant_datasets,
             "next_actions": ["具体的なキーワードで検索", "データセットの詳細確認"]
         }
     
@@ -303,10 +310,73 @@ class EnhancedResearchAdvisor:
             }
     
     def _find_similar_documents_enhanced(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """拡張された類似文書検索"""
+        """拡張された類似文書検索（ベクトル検索優先のハイブリッド）"""
+
+        # ベクトル検索が有効な場合は、ベクトル検索を優先
+        if self.vector_engine.is_enabled():
+            logger.info(f"Using vector search for query: {query}")
+            try:
+                vector_results = self.vector_engine.search_similar(
+                    query,
+                    limit=top_k,
+                    threshold=0.5  # セマンティック検索は閾値を下げる
+                )
+
+                # ベクトル検索結果をメタデータ形式に変換
+                enhanced_results = []
+                for result in vector_results:
+                    metadata = result.get('metadata', {})
+                    doc_type = metadata.get('type', '')
+                    doc_id = metadata.get('id', 0)
+
+                    # データベースから詳細情報を取得
+                    if doc_type == 'paper':
+                        paper = self.paper_repo.find_by_id(doc_id)
+                        if paper:
+                            enhanced_results.append({
+                                "type": "paper",
+                                "id": paper.id,
+                                "title": paper.title,
+                                "authors": paper.authors,
+                                "abstract": paper.abstract,
+                                "keywords": paper.keywords,
+                                "file_name": paper.file_name,
+                                "file_path": paper.file_path,
+                                "drive_url": paper.drive_url,
+                                "similarity_score": result.get('similarity', 0.0)
+                            })
+                    elif doc_type == 'poster':
+                        poster = self.poster_repo.find_by_id(doc_id)
+                        if poster:
+                            enhanced_results.append({
+                                "type": "poster",
+                                "id": poster.id,
+                                "title": poster.title,
+                                "authors": poster.authors,
+                                "abstract": poster.abstract,
+                                "keywords": poster.keywords,
+                                "file_name": poster.file_name,
+                                "file_path": poster.file_path,
+                                "drive_url": poster.drive_url,
+                                "similarity_score": result.get('similarity', 0.0)
+                            })
+                    # dataset は related_documents に含めない（relevant_datasets で別途処理）
+                    # elif doc_type == 'dataset': は削除
+
+                if enhanced_results:
+                    logger.info(f"Vector search returned {len(enhanced_results)} results")
+                    return enhanced_results
+                else:
+                    logger.warning("Vector search returned no results, falling back to TF-IDF")
+
+            except Exception as e:
+                logger.error(f"Vector search error, falling back to TF-IDF: {e}")
+
+        # フォールバック: TF-IDFベースの検索
+        logger.info(f"Using TF-IDF search for query: {query}")
         documents = []
         doc_metadata = []
-        
+
         # 論文の検索
         papers = self.paper_repo.find_all()
         for paper in papers:
@@ -321,9 +391,10 @@ class EnhancedResearchAdvisor:
                     "abstract": paper.abstract,
                     "keywords": paper.keywords,
                     "file_name": paper.file_name,
-                    "file_path": paper.file_path
+                    "file_path": paper.file_path,
+                    "drive_url": paper.drive_url
                 })
-        
+
         # ポスターの検索
         posters = self.poster_repo.find_all()
         for poster in posters:
@@ -338,25 +409,13 @@ class EnhancedResearchAdvisor:
                     "abstract": poster.abstract,
                     "keywords": poster.keywords,
                     "file_name": poster.file_name,
-                    "file_path": poster.file_path
+                    "file_path": poster.file_path,
+                    "drive_url": poster.drive_url
                 })
-        
-        # データセットの検索
-        datasets = self.dataset_repo.find_all()
-        for dataset in datasets:
-            if dataset.summary or dataset.description:
-                doc_text = f"{dataset.name} {dataset.description or ''} {dataset.summary or ''}"
-                documents.append(doc_text)
-                doc_metadata.append({
-                    "type": "dataset",
-                    "id": dataset.id,
-                    "name": dataset.name,
-                    "description": dataset.description,
-                    "summary": dataset.summary,
-                    "file_count": dataset.file_count,
-                    "total_size": dataset.total_size
-                })
-        
+
+        # データセットはrelated_documentsに含めない（relevant_datasetsで別途処理）
+        # TF-IDFフォールバックでもdatasetは除外
+
         if not documents:
             return []
         
@@ -449,7 +508,8 @@ class EnhancedResearchAdvisor:
                 if len(word) > 2 and word in dataset_text:  # 短すぎる単語は除外
                     relevance_score += 1
             
-            if relevance_score > 0:
+            # 関連性が高い場合のみ追加（閾値: 5以上 = データセット名一致 or 重要キーワード2つ以上一致）
+            if relevance_score >= 5:
                 relevant_datasets.append({
                     "dataset_id": dataset.id,
                     "name": dataset.name,
@@ -458,9 +518,10 @@ class EnhancedResearchAdvisor:
                     "file_count": dataset.file_count,
                     "total_size": dataset.total_size,
                     "files": [{"file_name": f.file_name, "file_type": f.file_type} for f in dataset_files],
-                    "relevance_score": relevance_score
+                    "relevance_score": relevance_score,
+                    "drive_url": dataset.drive_url
                 })
-        
+
         # 関連度順にソート
         relevant_datasets.sort(key=lambda x: x["relevance_score"], reverse=True)
         return relevant_datasets[:5]
@@ -474,6 +535,9 @@ class EnhancedResearchAdvisor:
             # 日本語助詞・動詞・形容詞など
             'に', 'を', 'が', 'は', 'で', 'と', 'の', 'だ', 'である', 'です', 'ます', 'した', 'する', 'される',
             'から', 'まで', 'より', 'など', 'こと', 'もの', 'について', 'に関する', 'がしたい', 'したい',
+            # 学術系の一般的な単語（あまりにも広範囲で使われる単語）
+            '研究', '分析', 'データ', '情報', '利用', '評価', '手法', '開発', '検討', '提案', '教えて',
+            'ファイル', '含まれ', '可能', '想定', '考え', 'られ', '推測', '目的',
             # 英語一般語
             'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'about'
         }

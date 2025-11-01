@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>研究データ管理システム</title>
+    <title>R&D DB</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #1e293b;
         }
         .card-hover:hover {
             transform: translateY(-2px);
@@ -29,10 +29,14 @@
         <div class="container mx-auto px-4 py-6">
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-3xl font-bold">研究データ管理システム</h1>
-                    <p class="text-gray-200 mt-1">Google Drive連携 & AI研究相談</p>
+                    <h1 class="text-3xl font-bold">R&D DB</h1>
+                    <p class="text-gray-200 mt-1">Google Drive & LLM Agent</p>
                 </div>
                 <div class="flex items-center space-x-4">
+                    <button id="open-sync-modal" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-md transition-colors duration-200 flex items-center space-x-2">
+                        <i class="fab fa-google-drive"></i>
+                        <span>同期</span>
+                    </button>
                     <div id="system-status" class="flex items-center space-x-2">
                         <span class="text-sm">システム状態:</span>
                         <div class="flex space-x-2">
@@ -87,41 +91,7 @@
         </div>
 
         <!-- 主要機能 -->
-        <div class="grid lg:grid-cols-2 gap-8">
-            <!-- Google Drive同期 -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                    <i class="fab fa-google-drive text-blue-500 mr-2"></i>
-                    Google Drive同期
-                </h2>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">同期対象</label>
-                        <select id="sync-folder-type" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="all">すべて</option>
-                            <option value="papers">論文</option>
-                            <option value="posters">ポスター</option>
-                            <option value="datasets">データセット</option>
-                        </select>
-                    </div>
-                    
-                    <button id="sync-button" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors duration-200">
-                        <span id="sync-text">同期開始</span>
-                        <div id="sync-loading" class="loading">
-                            <i class="fas fa-spinner fa-spin mr-2"></i>同期中...
-                        </div>
-                    </button>
-                    
-                    <div id="sync-result" class="hidden p-3 rounded-md"></div>
-                </div>
-                
-                <!-- Google Drive状態 -->
-                <div id="drive-status" class="mt-4 p-3 bg-gray-50 rounded-md">
-                    <p class="text-sm text-gray-600">Google Drive状態を確認中...</p>
-                </div>
-            </div>
-
+        <div class="grid lg:grid-cols-1 gap-8">
             <!-- AI研究相談チャット -->
             <div class="bg-white rounded-lg shadow-md p-6">
                 <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
@@ -154,16 +124,27 @@
                     </div>
                 </div>
                 
+                <!-- 関連ファイル・フォルダ表示エリア -->
+                <div id="related-items-section" class="hidden mt-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                    <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center">
+                        <i class="fas fa-link text-blue-600 mr-2"></i>
+                        提案されたファイル・フォルダ
+                    </h3>
+                    <div id="related-items-content" class="space-y-2">
+                        <!-- 動的に生成されます -->
+                    </div>
+                </div>
+
                 <!-- 入力エリア -->
                 <div class="space-y-3">
                     <div class="flex space-x-2">
-                        <input type="text" 
-                               id="chat-input" 
-                               class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" 
-                               placeholder="研究について質問してください..." 
+                        <input type="text"
+                               id="chat-input"
+                               class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                               placeholder="研究について質問してください..."
                                onkeypress="handleChatKeyPress(event)">
-                        <button id="chat-send-button" 
-                                onclick="sendChatMessage()" 
+                        <button id="chat-send-button"
+                                onclick="sendChatMessage()"
                                 class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors duration-200 flex items-center disabled:bg-gray-400">
                             <i class="fas fa-paper-plane mr-1"></i>
                             送信
@@ -172,17 +153,17 @@
                     
                     <!-- クイックアクション -->
                     <div class="flex flex-wrap gap-2">
-                        <button onclick="quickQuestion('どんなデータセットがありますか？')" class="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-colors">
-                            データセット一覧
+                        <button onclick="quickQuestion('AI開発に使えるデータセットはありますか？')" class="text-xs bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full hover:bg-yellow-200 transition-colors">
+                            <i class="fas fa-brain mr-1"></i>AI開発用
                         </button>
-                        <button onclick="quickQuestion('ESGに関連する研究はありますか？')" class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200 transition-colors">
-                            ESG研究
+                        <button onclick="quickQuestion('ビジネス分析に使えるデータセットはありますか？')" class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200 transition-colors">
+                            <i class="fas fa-chart-line mr-1"></i>ビジネス分析用
                         </button>
-                        <button onclick="quickQuestion('機械学習の研究について相談したい')" class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-200 transition-colors">
-                            機械学習研究
+                        <button onclick="quickQuestion('社会課題の分析に使えるデータセットはありますか？')" class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-200 transition-colors">
+                            <i class="fas fa-users mr-1"></i>社会課題分析用
                         </button>
-                        <button onclick="showDatabaseOverview()" class="text-xs bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full hover:bg-yellow-200 transition-colors">
-                            <i class="fas fa-database mr-1"></i>DB概要
+                        <button onclick="showDatabaseOverview()" class="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-colors">
+                            <i class="fas fa-database mr-1"></i>全データ概要
                         </button>
                         <button onclick="clearChat()" class="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-200 transition-colors">
                             <i class="fas fa-trash mr-1"></i>履歴クリア
@@ -308,48 +289,32 @@
                 document.getElementById('papers-count').textContent = status.stats.papers;
                 document.getElementById('posters-count').textContent = status.stats.posters;
                 document.getElementById('datasets-count').textContent = status.stats.datasets;
-                
-                // チャット用統計も更新
+
+                // チャット用統計も更新（IDは静的HTMLにのみ存在、動的生成された要素はクラスで識別）
                 const chatPapersCount = document.getElementById('chat-papers-count');
                 const chatPostersCount = document.getElementById('chat-posters-count');
                 const chatDatasetsCount = document.getElementById('chat-datasets-count');
                 if (chatPapersCount) chatPapersCount.textContent = status.stats.papers;
                 if (chatPostersCount) chatPostersCount.textContent = status.stats.posters;
                 if (chatDatasetsCount) chatDatasetsCount.textContent = status.stats.datasets;
+
+                // 動的生成されたチャット統計も更新（クラスベース）
+                const chatPapersStat = document.querySelector('.chat-papers-stat');
+                const chatPostersStat = document.querySelector('.chat-posters-stat');
+                const chatDatasetsStat = document.querySelector('.chat-datasets-stat');
+                if (chatPapersStat) chatPapersStat.textContent = status.stats.papers;
+                if (chatPostersStat) chatPostersStat.textContent = status.stats.posters;
+                if (chatDatasetsStat) chatDatasetsStat.textContent = status.stats.datasets;
                 
             } catch (error) {
                 console.error('システム状態取得エラー:', error);
             }
         }
 
-        // Google Drive状態の更新
+        // Google Drive認証状態の更新（モーダル用）
         async function updateGoogleDriveStatus() {
-            try {
-                const response = await fetch('/api/google-drive/status');
-                const status = await response.json();
-                const statusDiv = document.getElementById('drive-status');
-                
-                if (status.enabled) {
-                    if (status.storage) {
-                        statusDiv.innerHTML = `
-                            <p class="text-sm text-green-600">
-                                <i class="fas fa-check-circle mr-1"></i>
-                                Google Drive接続済み - 使用量: ${status.storage.usage_gb.toFixed(2)}GB / ${status.storage.limit_gb.toFixed(2)}GB (${status.storage.usage_percent.toFixed(1)}%)
-                            </p>
-                            <p class="text-xs text-gray-500 mt-1">
-                                フォルダ: ${status.folders.join(', ')} (${status.file_count}ファイル)
-                            </p>
-                        `;
-                    } else {
-                        statusDiv.innerHTML = '<p class="text-sm text-green-600"><i class="fas fa-check-circle mr-1"></i>Google Drive接続済み</p>';
-                    }
-                } else {
-                    statusDiv.innerHTML = '<p class="text-sm text-red-600"><i class="fas fa-times-circle mr-1"></i>Google Drive未接続</p>';
-                }
-            } catch (error) {
-                console.error('Google Drive状態取得エラー:', error);
-                document.getElementById('drive-status').innerHTML = '<p class="text-sm text-red-600"><i class="fas fa-exclamation-triangle mr-1"></i>状態取得エラー</p>';
-            }
+            // 新しいOAuthベースのUIでは、モーダルを開いたときに認証状態をチェックするため、
+            // この関数は削除されました。代わりにcheckAuthStatus()を使用します。
         }
 
         // Google Drive同期
@@ -504,12 +469,18 @@
                     <p class="font-medium">研究について何でもお聞きください！</p>
                     <p class="text-sm mt-1">データベース内の論文・ポスター・データセットを参照して回答します</p>
                     <div class="mt-4 text-xs text-gray-400">
-                        現在のデータ: 論文<span id="chat-papers-count">${document.getElementById('papers-count').textContent}</span>件, 
-                        ポスター<span id="chat-posters-count">${document.getElementById('posters-count').textContent}</span>件, 
-                        データセット<span id="chat-datasets-count">${document.getElementById('datasets-count').textContent}</span>件
+                        現在のデータ: 論文<span class="chat-papers-stat">${document.getElementById('papers-count').textContent}</span>件,
+                        ポスター<span class="chat-posters-stat">${document.getElementById('posters-count').textContent}</span>件,
+                        データセット<span class="chat-datasets-stat">${document.getElementById('datasets-count').textContent}</span>件
                     </div>
                 </div>
             `;
+
+            // 関連アイテムセクションも非表示
+            const relatedSection = document.getElementById('related-items-section');
+            if (relatedSection) {
+                relatedSection.classList.add('hidden');
+            }
         }
 
         // チャットメッセージ送信
@@ -573,12 +544,18 @@
                 });
                 
                 const data = await response.json();
-                
+                console.log('API Response:', data);
+
                 // 入力中インジケーター削除
                 document.getElementById('typing-indicator').remove();
-                
+
                 // AIレスポンスを追加
                 addChatMessage('ai', data.advice, data);
+
+                // 関連ファイル・フォルダを下部セクションに表示
+                console.log('Calling updateRelatedItems...');
+                updateRelatedItems(data);
+                console.log('updateRelatedItems completed');
                 
             } catch (error) {
                 console.error('チャットエラー:', error);
@@ -685,6 +662,109 @@
             return escapeHtml(text).replace(/\n/g, '<br>');
         }
 
+        // 関連ファイル・フォルダの表示更新
+        function updateRelatedItems(data) {
+            console.log('updateRelatedItems called with data:', data);
+            const section = document.getElementById('related-items-section');
+            const content = document.getElementById('related-items-content');
+            console.log('Section element:', section);
+            console.log('Content element:', content);
+
+            // 関連文書と関連データセットをチェック
+            const hasRelatedDocs = data.related_documents && data.related_documents.length > 0;
+            const hasRelevantDatasets = data.relevant_datasets && data.relevant_datasets.length > 0;
+            console.log('hasRelatedDocs:', hasRelatedDocs, 'hasRelevantDatasets:', hasRelevantDatasets);
+
+            if (!hasRelatedDocs && !hasRelevantDatasets) {
+                console.log('No related items, hiding section');
+                section.classList.add('hidden');
+                return;
+            }
+
+            console.log('Has related items, building HTML...');
+
+            let html = '';
+
+            // 関連文書（論文・ポスター）を表示
+            if (hasRelatedDocs) {
+                html += '<div class="mb-3">';
+                html += '<h4 class="text-xs font-semibold text-gray-700 mb-2"><i class="fas fa-file-alt text-blue-500 mr-1"></i>関連文書</h4>';
+                html += '<div class="grid grid-cols-1 gap-2">';
+
+                data.related_documents.forEach(doc => {
+                    const icon = doc.type === 'paper' ? 'fa-file-alt' : 'fa-image';
+                    const iconColor = doc.type === 'paper' ? 'text-blue-600' : 'text-green-600';
+                    const title = doc.title || doc.file_name || '無題';
+
+                    html += `
+                        <div class="bg-white border border-gray-300 rounded-md p-3 hover:shadow-md transition-shadow">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center mb-1">
+                                        <i class="fas ${icon} ${iconColor} text-sm mr-2"></i>
+                                        <span class="font-medium text-gray-800 text-sm">${escapeHtml(title)}</span>
+                                    </div>
+                                    ${doc.authors ? `<p class="text-xs text-gray-600 ml-6 mb-1">著者: ${escapeHtml(doc.authors)}</p>` : ''}
+                                    ${doc.abstract ? `<p class="text-xs text-gray-500 ml-6">${escapeHtml(doc.abstract.substring(0, 100))}...</p>` : ''}
+                                </div>
+                                ${doc.drive_url ? `
+                                    <a href="${doc.drive_url}" target="_blank"
+                                       class="ml-2 px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors text-xs font-medium flex items-center">
+                                        <i class="fas fa-external-link-alt mr-1"></i>開く
+                                    </a>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div></div>';
+            }
+
+            // 関連データセットを表示
+            if (hasRelevantDatasets) {
+                html += '<div>';
+                html += '<h4 class="text-xs font-semibold text-gray-700 mb-2"><i class="fas fa-database text-purple-500 mr-1"></i>関連データセット</h4>';
+                html += '<div class="grid grid-cols-1 gap-2">';
+
+                data.relevant_datasets.forEach(ds => {
+                    const name = ds.name || '無題';
+                    const fileCountText = ds.file_count ? `${ds.file_count}ファイル` : '';
+                    const sizeMB = ds.total_size ? (ds.total_size / (1024 * 1024)).toFixed(1) : '0';
+
+                    html += `
+                        <div class="bg-white border border-gray-300 rounded-md p-3 hover:shadow-md transition-shadow">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center mb-1">
+                                        <i class="fas fa-database text-purple-600 text-sm mr-2"></i>
+                                        <span class="font-medium text-gray-800 text-sm">${escapeHtml(name)}</span>
+                                    </div>
+                                    ${ds.description ? `<p class="text-xs text-gray-600 ml-6 mb-1">${escapeHtml(ds.description)}</p>` : ''}
+                                    ${ds.summary ? `<p class="text-xs text-gray-500 ml-6 mb-1">${escapeHtml(ds.summary.substring(0, 100))}...</p>` : ''}
+                                    <p class="text-xs text-gray-500 ml-6">
+                                        <i class="fas fa-folder text-xs mr-1"></i>${fileCountText}
+                                        <i class="fas fa-hdd text-xs ml-2 mr-1"></i>${sizeMB} MB
+                                    </p>
+                                </div>
+                                ${ds.drive_url ? `
+                                    <a href="${ds.drive_url}" target="_blank"
+                                       class="ml-2 px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors text-xs font-medium flex items-center">
+                                        <i class="fas fa-external-link-alt mr-1"></i>開く
+                                    </a>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div></div>';
+            }
+
+            content.innerHTML = html;
+            section.classList.remove('hidden');
+        }
+
         // データベース概要表示
         async function showDatabaseOverview() {
             try {
@@ -763,18 +843,6 @@
             }
         }
 
-        // イベントリスナー設定
-        document.getElementById('sync-button').addEventListener('click', syncGoogleDrive);
-        document.getElementById('search-button').addEventListener('click', searchData);
-        
-        // Enterキーで検索
-        document.getElementById('search-query').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                searchData();
-            }
-        });
-
-
         // チャート関連の変数
         let summaryChart = null;
         let categoryChart = null;
@@ -829,14 +897,14 @@
             categoryChart = new Chart(categoryCtx, {
                 type: 'doughnut',
                 data: {
-                    labels: ['機械学習', 'ESG', 'データ可視化', 'その他'],
+                    labels: ['AI開発・学習', 'ビジネス分析', '社会課題分析', 'その他'],
                     datasets: [{
                         data: [0, 0, 0, 0],
                         backgroundColor: [
-                            'rgba(245, 158, 11, 0.8)',  // yellow
-                            'rgba(34, 197, 94, 0.8)',   // green
-                            'rgba(168, 85, 247, 0.8)',  // purple
-                            'rgba(156, 163, 175, 0.8)'  // gray
+                            'rgba(245, 158, 11, 0.8)',  // yellow (AI開発)
+                            'rgba(34, 197, 94, 0.8)',   // green (ビジネス)
+                            'rgba(168, 85, 247, 0.8)',  // purple (社会課題)
+                            'rgba(156, 163, 175, 0.8)'  // gray (その他)
                         ],
                         borderColor: [
                             'rgba(245, 158, 11, 1)',
@@ -909,11 +977,11 @@
                     const totalSize = document.getElementById('chart-total-size');
                     const avgSize = document.getElementById('chart-avg-size');
                     const lastUpdated = document.getElementById('chart-last-updated');
-                    
+
                     if (totalFiles) totalFiles.textContent = stats.total_files;
-                    if (totalSize) totalSize.textContent = totalSizeMB.toFixed(0);
-                    if (avgSize) avgSize.textContent = 
-                        stats.total_datasets > 0 ? (totalSizeMB / stats.total_datasets).toFixed(0) : '0';
+                    if (totalSize) totalSize.textContent = totalSizeMB.toFixed(2);
+                    if (avgSize) avgSize.textContent =
+                        stats.total_datasets > 0 ? (totalSizeMB / stats.total_datasets).toFixed(2) : '0';
                     
                     // 最終更新時刻
                     const lastUpdatedTime = new Date(stats.last_updated);
@@ -964,19 +1032,228 @@
         // 初期化
         document.addEventListener('DOMContentLoaded', function() {
             updateSystemStatus();
-            updateGoogleDriveStatus();
-            
+
             // チャート初期化
             initializeCharts();
             updateCharts();
             setupAutoRefresh();
-            
+
             // 更新ボタンのイベントリスナー
             const refreshBtn = document.getElementById('refresh-charts-btn');
             if (refreshBtn) {
                 refreshBtn.addEventListener('click', refreshCharts);
             }
+
+            // モーダル制御
+            const syncModal = document.getElementById('sync-modal');
+            const openSyncModalBtn = document.getElementById('open-sync-modal');
+            const closeSyncModalBtn = document.getElementById('close-sync-modal');
+
+            if (openSyncModalBtn && closeSyncModalBtn && syncModal) {
+                openSyncModalBtn.addEventListener('click', () => {
+                    syncModal.classList.remove('hidden');
+                    syncModal.classList.add('flex');
+                });
+
+                closeSyncModalBtn.addEventListener('click', () => {
+                    syncModal.classList.add('hidden');
+                    syncModal.classList.remove('flex');
+                });
+
+                // モーダル外クリックで閉じる
+                syncModal.addEventListener('click', (e) => {
+                    if (e.target === syncModal) {
+                        syncModal.classList.add('hidden');
+                        syncModal.classList.remove('flex');
+                    }
+                });
+            }
+
+            // Google 認証状態をチェック
+            async function checkAuthStatus() {
+                try {
+                    const response = await fetch('/api/auth/google/status');
+                    const data = await response.json();
+
+                    if (data.authenticated) {
+                        document.getElementById('not-authenticated').classList.add('hidden');
+                        document.getElementById('authenticated').classList.remove('hidden');
+                    } else {
+                        document.getElementById('not-authenticated').classList.remove('hidden');
+                        document.getElementById('authenticated').classList.add('hidden');
+                    }
+                } catch (error) {
+                    console.error('Auth status check error:', error);
+                }
+            }
+
+            // Googleログインボタン
+            const googleLoginBtn = document.getElementById('google-login-btn');
+            if (googleLoginBtn) {
+                googleLoginBtn.addEventListener('click', async () => {
+                    try {
+                        const response = await fetch('/api/auth/google/login');
+                        const data = await response.json();
+
+                        if (data.auth_url) {
+                            window.location.href = data.auth_url;
+                        }
+                    } catch (error) {
+                        console.error('Login error:', error);
+                        alert('ログインに失敗しました');
+                    }
+                });
+            }
+
+            // フォルダ選択ボタン
+            const selectFolderBtn = document.getElementById('select-folder-btn');
+            const folderList = document.getElementById('folder-list');
+            if (selectFolderBtn) {
+                selectFolderBtn.addEventListener('click', async () => {
+                    try {
+                        const response = await fetch('/api/drive/folders');
+                        const data = await response.json();
+
+                        const folderListContent = document.getElementById('folder-list-content');
+                        folderListContent.innerHTML = '';
+
+                        data.folders.forEach(folder => {
+                            const folderItem = document.createElement('div');
+                            folderItem.className = 'p-3 hover:bg-gray-100 cursor-pointer flex items-center';
+                            folderItem.innerHTML = `
+                                <i class="fas fa-folder text-yellow-500 mr-2"></i>
+                                <span class="flex-1">${folder.name}</span>
+                            `;
+                            folderItem.addEventListener('click', () => {
+                                document.getElementById('selected-folder-name').textContent = folder.name;
+                                document.getElementById('selected-folder-id').value = folder.id;
+                                folderList.classList.add('hidden');
+
+                                // フォルダIDを設定
+                                fetch('/api/drive/set-folder', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({folder_id: folder.id})
+                                });
+                            });
+                            folderListContent.appendChild(folderItem);
+                        });
+
+                        folderList.classList.toggle('hidden');
+                    } catch (error) {
+                        console.error('Folder list error:', error);
+                        alert('フォルダ一覧の取得に失敗しました');
+                    }
+                });
+            }
+
+            // イベントリスナー設定
+            const syncButton = document.getElementById('sync-button');
+            const searchButton = document.getElementById('search-button');
+            const searchQuery = document.getElementById('search-query');
+
+            if (syncButton) {
+                syncButton.addEventListener('click', syncGoogleDrive);
+            }
+            if (searchButton) {
+                searchButton.addEventListener('click', searchData);
+            }
+            if (searchQuery) {
+                searchQuery.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        searchData();
+                    }
+                });
+            }
+
+            // 初期化時に認証状態をチェック
+            checkAuthStatus();
+
+            // 認証成功時の処理
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('auth_success')) {
+                checkAuthStatus();
+                window.history.replaceState({}, document.title, '/');
+            }
         });
     </script>
+
+    <!-- Google Drive同期モーダル -->
+    <div id="sync-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="flex items-center justify-between p-6 border-b">
+                <h3 class="text-xl font-bold text-gray-800 flex items-center">
+                    <i class="fab fa-google-drive text-blue-500 mr-2"></i>
+                    Google Drive同期
+                </h3>
+                <button id="close-sync-modal" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-4">
+                <!-- Google認証セクション -->
+                <div id="auth-section">
+                    <div id="not-authenticated" class="space-y-3">
+                        <div class="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <p class="text-sm text-blue-800">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Google Driveに接続するには、まずログインしてください
+                            </p>
+                        </div>
+                        <button id="google-login-btn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center">
+                            <i class="fab fa-google mr-2"></i>
+                            Googleでログイン
+                        </button>
+                    </div>
+
+                    <div id="authenticated" class="hidden space-y-3">
+                        <div class="p-3 bg-green-50 border border-green-200 rounded-md">
+                            <p class="text-sm text-green-800">
+                                <i class="fas fa-check-circle mr-1"></i>
+                                Google Driveに接続済み
+                            </p>
+                        </div>
+
+                        <!-- フォルダ選択 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">同期フォルダを選択</label>
+                            <button id="select-folder-btn" class="w-full border border-gray-300 rounded-md px-3 py-2 text-left hover:bg-gray-50 transition-colors">
+                                <i class="fas fa-folder mr-2"></i>
+                                <span id="selected-folder-name">フォルダを選択...</span>
+                            </button>
+                            <input type="hidden" id="selected-folder-id" />
+                        </div>
+
+                        <!-- フォルダ一覧（展開時） -->
+                        <div id="folder-list" class="hidden max-h-64 overflow-y-auto border border-gray-300 rounded-md">
+                            <div id="folder-list-content" class="divide-y"></div>
+                        </div>
+
+                        <!-- 同期対象タイプ -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">同期対象</label>
+                            <select id="sync-folder-type" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="all">すべて</option>
+                                <option value="papers">論文</option>
+                                <option value="posters">ポスター</option>
+                                <option value="datasets">データセット</option>
+                            </select>
+                        </div>
+
+                        <button id="sync-button" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors duration-200">
+                            <span id="sync-text">同期開始</span>
+                            <div id="sync-loading" class="loading">
+                                <i class="fas fa-spinner fa-spin mr-2"></i>同期中...
+                            </div>
+                        </button>
+
+                        <div id="sync-result" class="hidden p-3 rounded-md"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

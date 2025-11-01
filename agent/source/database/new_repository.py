@@ -3,7 +3,7 @@ from datetime import datetime
 import logging
 
 from .connection import db_connection
-from .new_models import Dataset, Paper, Poster, DatasetFile
+from .new_models import Dataset, Paper, Poster, DatasetFile, PaperDatasetRelation, PosterDatasetRelation
 
 logger = logging.getLogger(__name__)
 
@@ -230,13 +230,14 @@ class DatasetFileRepository:
         query = """
         INSERT INTO dataset_files (
             dataset_id, file_path, file_name, file_type, file_size,
-            created_at, updated_at, content_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            created_at, updated_at, content_hash, schema_info, summary
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (dataset_file.dataset_id, dataset_file.file_path, dataset_file.file_name,
                  dataset_file.file_type, dataset_file.file_size, dataset_file.created_at,
-                 dataset_file.updated_at, dataset_file.content_hash)
-        
+                 dataset_file.updated_at, dataset_file.content_hash, dataset_file.schema_info,
+                 dataset_file.summary)
+
         cursor = self.db.execute_query(query, params)
         dataset_file.id = cursor.lastrowid
         logger.info(f"データセットファイルを登録: {dataset_file.file_name}")
@@ -253,9 +254,116 @@ class DatasetFileRepository:
         query = "SELECT * FROM dataset_files WHERE file_path = ?"
         row = self.db.fetch_one(query, (file_path,))
         return DatasetFile.from_dict(dict(row)) if row else None
-    
+
+    def update(self, dataset_file: DatasetFile) -> bool:
+        """データセットファイルを更新"""
+        query = """
+        UPDATE dataset_files SET
+            file_name = ?, file_type = ?, file_size = ?,
+            schema_info = ?, summary = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """
+        params = (dataset_file.file_name, dataset_file.file_type, dataset_file.file_size,
+                 dataset_file.schema_info, dataset_file.summary, dataset_file.id)
+
+        cursor = self.db.execute_query(query, params)
+        success = cursor.rowcount > 0
+        if success:
+            logger.info(f"データセットファイルを更新: {dataset_file.file_name}")
+        return success
+
     def delete_by_dataset_id(self, dataset_id: int) -> bool:
         """データセットIDでファイルを削除"""
         query = "DELETE FROM dataset_files WHERE dataset_id = ?"
         cursor = self.db.execute_query(query, (dataset_id,))
+        return cursor.rowcount > 0
+
+
+class PaperDatasetRelationRepository:
+    """論文-データセット関連テーブルのリポジトリ"""
+
+    def __init__(self):
+        self.db = db_connection
+
+    def create(self, relation: PaperDatasetRelation) -> PaperDatasetRelation:
+        """関連を作成"""
+        query = """
+        INSERT INTO paper_dataset_relations (paper_id, dataset_id, relation_type, confidence, notes)
+        VALUES (?, ?, ?, ?, ?)
+        """
+        params = (relation.paper_id, relation.dataset_id, relation.relation_type,
+                 relation.confidence, relation.notes)
+
+        cursor = self.db.execute_query(query, params)
+        relation.id = cursor.lastrowid
+        logger.info(f"論文-データセット関連を登録: Paper#{relation.paper_id} - Dataset#{relation.dataset_id}")
+        return relation
+
+    def find_by_paper_id(self, paper_id: int) -> List[PaperDatasetRelation]:
+        """論文IDで関連を検索"""
+        query = "SELECT * FROM paper_dataset_relations WHERE paper_id = ?"
+        rows = self.db.fetch_all(query, (paper_id,))
+        return [PaperDatasetRelation.from_dict(dict(row)) for row in rows]
+
+    def find_by_dataset_id(self, dataset_id: int) -> List[PaperDatasetRelation]:
+        """データセットIDで関連を検索"""
+        query = "SELECT * FROM paper_dataset_relations WHERE dataset_id = ?"
+        rows = self.db.fetch_all(query, (dataset_id,))
+        return [PaperDatasetRelation.from_dict(dict(row)) for row in rows]
+
+    def find_by_both_ids(self, paper_id: int, dataset_id: int) -> Optional[PaperDatasetRelation]:
+        """論文IDとデータセットIDの両方で関連を検索"""
+        query = "SELECT * FROM paper_dataset_relations WHERE paper_id = ? AND dataset_id = ?"
+        row = self.db.fetch_one(query, (paper_id, dataset_id))
+        return PaperDatasetRelation.from_dict(dict(row)) if row else None
+
+    def delete(self, relation_id: int) -> bool:
+        """関連を削除"""
+        query = "DELETE FROM paper_dataset_relations WHERE id = ?"
+        cursor = self.db.execute_query(query, (relation_id,))
+        return cursor.rowcount > 0
+
+
+class PosterDatasetRelationRepository:
+    """ポスター-データセット関連テーブルのリポジトリ"""
+
+    def __init__(self):
+        self.db = db_connection
+
+    def create(self, relation: PosterDatasetRelation) -> PosterDatasetRelation:
+        """関連を作成"""
+        query = """
+        INSERT INTO poster_dataset_relations (poster_id, dataset_id, relation_type, confidence, notes)
+        VALUES (?, ?, ?, ?, ?)
+        """
+        params = (relation.poster_id, relation.dataset_id, relation.relation_type,
+                 relation.confidence, relation.notes)
+
+        cursor = self.db.execute_query(query, params)
+        relation.id = cursor.lastrowid
+        logger.info(f"ポスター-データセット関連を登録: Poster#{relation.poster_id} - Dataset#{relation.dataset_id}")
+        return relation
+
+    def find_by_poster_id(self, poster_id: int) -> List[PosterDatasetRelation]:
+        """ポスターIDで関連を検索"""
+        query = "SELECT * FROM poster_dataset_relations WHERE poster_id = ?"
+        rows = self.db.fetch_all(query, (poster_id,))
+        return [PosterDatasetRelation.from_dict(dict(row)) for row in rows]
+
+    def find_by_dataset_id(self, dataset_id: int) -> List[PosterDatasetRelation]:
+        """データセットIDで関連を検索"""
+        query = "SELECT * FROM poster_dataset_relations WHERE dataset_id = ?"
+        rows = self.db.fetch_all(query, (dataset_id,))
+        return [PosterDatasetRelation.from_dict(dict(row)) for row in rows]
+
+    def find_by_both_ids(self, poster_id: int, dataset_id: int) -> Optional[PosterDatasetRelation]:
+        """ポスターIDとデータセットIDの両方で関連を検索"""
+        query = "SELECT * FROM poster_dataset_relations WHERE poster_id = ? AND dataset_id = ?"
+        row = self.db.fetch_one(query, (poster_id, dataset_id))
+        return PosterDatasetRelation.from_dict(dict(row)) if row else None
+
+    def delete(self, relation_id: int) -> bool:
+        """関連を削除"""
+        query = "DELETE FROM poster_dataset_relations WHERE id = ?"
+        cursor = self.db.execute_query(query, (relation_id,))
         return cursor.rowcount > 0

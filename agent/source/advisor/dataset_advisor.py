@@ -329,10 +329,13 @@ class DatasetAdvisor:
         try:
             datasets = self.dataset_repo.find_all()
             
+            # total_sizeはバイト単位と仮定
+            total_size_bytes = sum(ds.total_size for ds in datasets if ds.total_size)
+
             overview = {
                 "total_datasets": len(datasets),
                 "total_files": sum(ds.file_count for ds in datasets),
-                "total_size_mb": sum(ds.total_size for ds in datasets if ds.total_size) / (1024 * 1024),
+                "total_size_mb": round(total_size_bytes / (1024 * 1024), 2),
                 "datasets": []
             }
             

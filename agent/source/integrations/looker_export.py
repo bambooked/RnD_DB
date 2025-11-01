@@ -37,25 +37,33 @@ class LookerDataExporter:
             # データセットの詳細情報
             all_datasets = self.dataset_repo.find_all()
             total_files = sum(ds.file_count for ds in all_datasets)
-            total_size_mb = sum(ds.total_size for ds in all_datasets)
-            total_size_gb = round(total_size_mb / 1024, 2)
+            # total_sizeはバイト単位と仮定
+            total_size_bytes = sum(ds.total_size for ds in all_datasets if ds.total_size)
+            total_size_gb = round(total_size_bytes / (1024 * 1024 * 1024), 2)
             
-            # カテゴリ別の集計（データセット名から推測）
+            # カテゴリ別の集計（用途・応用分野で分類）
             category_counts = {
-                'machine_learning': 0,
-                'esg': 0,
-                'visualization': 0,
+                'ai_development': 0,      # AI開発・モデル学習
+                'business_analytics': 0,  # ビジネス分析・意思決定
+                'social_impact': 0,       # 社会課題・影響分析
                 'others': 0
             }
-            
+
             for ds in all_datasets:
                 name_lower = ds.name.lower()
-                if 'ml' in name_lower or 'ai' in name_lower or 'jbbq' in name_lower:
-                    category_counts['machine_learning'] += 1
-                elif 'esg' in name_lower:
-                    category_counts['esg'] += 1
-                elif 'chart' in name_lower or 'visual' in name_lower or 'tv' in name_lower:
-                    category_counts['visualization'] += 1
+                # 説明も含めて判定
+                desc_lower = ds.description.lower() if ds.description else ''
+                combined_text = name_lower + ' ' + desc_lower
+
+                # AI開発・モデル学習用
+                if any(keyword in combined_text for keyword in ['ml', 'ai', 'machine learning', 'neural', 'deep learning', 'model', 'training', 'dataset for']):
+                    category_counts['ai_development'] += 1
+                # ビジネス分析・意思決定用
+                elif any(keyword in combined_text for keyword in ['esg', 'investment', 'business', 'market', 'finance', 'strategy', 'tv', 'ad', 'marketing']):
+                    category_counts['business_analytics'] += 1
+                # 社会課題・影響分析用
+                elif any(keyword in combined_text for keyword in ['bias', 'jbbq', 'fairness', 'social', 'environment', 'sustainability', 'green', 'emission']):
+                    category_counts['social_impact'] += 1
                 else:
                     category_counts['others'] += 1
             
@@ -68,9 +76,9 @@ class LookerDataExporter:
                 'total_datasets': datasets_count,
                 'total_files': total_files,
                 'total_size_gb': total_size_gb,
-                'category_ml': category_counts['machine_learning'],
-                'category_esg': category_counts['esg'],
-                'category_viz': category_counts['visualization'],
+                'category_ml': category_counts['ai_development'],
+                'category_esg': category_counts['business_analytics'],
+                'category_viz': category_counts['social_impact'],
                 'category_others': category_counts['others'],
                 'last_updated': current_time
             }
@@ -95,9 +103,9 @@ class LookerDataExporter:
             ('total_datasets', stats['total_datasets']),
             ('total_files', stats['total_files']),
             ('total_size_gb', stats['total_size_gb']),
-            ('category_machine_learning', stats['category_ml']),
-            ('category_esg', stats['category_esg']),
-            ('category_visualization', stats['category_viz']),
+            ('category_ai_development', stats['category_ml']),
+            ('category_business_analytics', stats['category_esg']),
+            ('category_social_impact', stats['category_viz']),
             ('category_others', stats['category_others']),
         ]
         

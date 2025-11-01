@@ -15,6 +15,8 @@ class Dataset:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     summary: Optional[str] = None
+    drive_folder_id: Optional[str] = None
+    drive_url: Optional[str] = None
 
     def to_dict(self) -> dict:
         """辞書形式に変換"""
@@ -26,7 +28,9 @@ class Dataset:
             "total_size": self.total_size,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "summary": self.summary
+            "summary": self.summary,
+            "drive_folder_id": self.drive_folder_id,
+            "drive_url": self.drive_url
         }
 
     @classmethod
@@ -54,6 +58,8 @@ class Paper:
     abstract: Optional[str] = None
     keywords: Optional[str] = None
     content_hash: Optional[str] = None
+    drive_file_id: Optional[str] = None
+    drive_url: Optional[str] = None
 
     def to_dict(self) -> dict:
         """辞書形式に変換"""
@@ -69,7 +75,9 @@ class Paper:
             "authors": self.authors,
             "abstract": self.abstract,
             "keywords": self.keywords,
-            "content_hash": self.content_hash
+            "content_hash": self.content_hash,
+            "drive_file_id": self.drive_file_id,
+            "drive_url": self.drive_url
         }
 
     @classmethod
@@ -99,6 +107,8 @@ class Poster:
     abstract: Optional[str] = None
     keywords: Optional[str] = None
     content_hash: Optional[str] = None
+    drive_file_id: Optional[str] = None
+    drive_url: Optional[str] = None
 
     def to_dict(self) -> dict:
         """辞書形式に変換"""
@@ -114,7 +124,9 @@ class Poster:
             "authors": self.authors,
             "abstract": self.abstract,
             "keywords": self.keywords,
-            "content_hash": self.content_hash
+            "content_hash": self.content_hash,
+            "drive_file_id": self.drive_file_id,
+            "drive_url": self.drive_url
         }
 
     @classmethod
@@ -142,6 +154,10 @@ class DatasetFile:
     updated_at: Optional[datetime] = None
     indexed_at: Optional[datetime] = None
     content_hash: Optional[str] = None
+    schema_info: Optional[str] = None  # JSONスキーマ情報（カラム名、データ型など）
+    summary: Optional[str] = None  # ファイルの要約
+    drive_file_id: Optional[str] = None
+    drive_url: Optional[str] = None
 
     def to_dict(self) -> dict:
         """辞書形式に変換"""
@@ -155,7 +171,11 @@ class DatasetFile:
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "indexed_at": self.indexed_at.isoformat() if self.indexed_at else None,
-            "content_hash": self.content_hash
+            "content_hash": self.content_hash,
+            "schema_info": self.schema_info,
+            "summary": self.summary,
+            "drive_file_id": self.drive_file_id,
+            "drive_url": self.drive_url
         }
 
     @classmethod
@@ -167,4 +187,66 @@ class DatasetFile:
             data["updated_at"] = datetime.fromisoformat(data["updated_at"])
         if data.get("indexed_at"):
             data["indexed_at"] = datetime.fromisoformat(data["indexed_at"])
+        return cls(**data)
+
+
+@dataclass
+class PaperDatasetRelation:
+    """論文とデータセット間の関連を表すデータクラス"""
+    id: Optional[int] = None
+    paper_id: int = 0
+    dataset_id: int = 0
+    relation_type: str = "cited"  # cited, used, created, etc.
+    confidence: float = 1.0  # 関連性の信頼度 (0.0-1.0)
+    created_at: Optional[datetime] = None
+    notes: Optional[str] = None  # 関連性に関する追加情報
+
+    def to_dict(self) -> dict:
+        """辞書形式に変換"""
+        return {
+            "id": self.id,
+            "paper_id": self.paper_id,
+            "dataset_id": self.dataset_id,
+            "relation_type": self.relation_type,
+            "confidence": self.confidence,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "notes": self.notes
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PaperDatasetRelation":
+        """辞書から作成"""
+        if data.get("created_at"):
+            data["created_at"] = datetime.fromisoformat(data["created_at"])
+        return cls(**data)
+
+
+@dataclass
+class PosterDatasetRelation:
+    """ポスターとデータセット間の関連を表すデータクラス"""
+    id: Optional[int] = None
+    poster_id: int = 0
+    dataset_id: int = 0
+    relation_type: str = "cited"  # cited, used, created, etc.
+    confidence: float = 1.0  # 関連性の信頼度 (0.0-1.0)
+    created_at: Optional[datetime] = None
+    notes: Optional[str] = None  # 関連性に関する追加情報
+
+    def to_dict(self) -> dict:
+        """辞書形式に変換"""
+        return {
+            "id": self.id,
+            "poster_id": self.poster_id,
+            "dataset_id": self.dataset_id,
+            "relation_type": self.relation_type,
+            "confidence": self.confidence,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "notes": self.notes
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PosterDatasetRelation":
+        """辞書から作成"""
+        if data.get("created_at"):
+            data["created_at"] = datetime.fromisoformat(data["created_at"])
         return cls(**data)

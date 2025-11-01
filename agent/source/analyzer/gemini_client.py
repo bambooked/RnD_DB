@@ -77,7 +77,58 @@ class GeminiClient:
         
         return None
     
-    def analyze_dataset_context(self, dataset_name: str, dataset_summary: str, 
+    def generate_dataset_description(self, dataset_name: str, file_list: List[Dict[str, Any]],
+                                    retry_count: int = 3) -> Optional[str]:
+        """データセット全体の解説を生成"""
+        # ファイル情報をまとめる
+        file_info_text = []
+        for f in file_list[:10]:  # 最初の10ファイルのみ
+            file_info_text.append(f"- {f.get('name', 'unknown')} ({f.get('type', 'unknown')}, {f.get('size', 0) / 1024:.1f} KB)")
+
+        prompt = f"""以下のデータセットについて、300文字程度で詳細な解説を生成してください。
+
+データセット名: {dataset_name}
+ファイル数: {len(file_list)}
+ファイル一覧（一部）:
+{chr(10).join(file_info_text)}
+
+以下の観点で解説してください:
+1. データセットの目的・用途
+2. 含まれるデータの種類と特徴
+3. 想定される利用シーン（研究分野、分析手法など）
+4. データセットの特徴的な点
+
+「このデータセットは」で始まる自然な文章で記述してください。
+"""
+
+        for attempt in range(retry_count):
+            try:
+                # テキスト形式で生成
+                model = genai.GenerativeModel(
+                    model_name=GEMINI_MODEL,
+                    generation_config={
+                        "temperature": 0.7,
+                        "top_p": 0.95,
+                        "max_output_tokens": 1024,
+                        "response_mime_type": "text/plain",
+                    }
+                )
+
+                response = model.generate_content(prompt)
+
+                if response.text:
+                    description = response.text.strip()
+                    logger.info(f"データセット解説生成成功: {dataset_name}")
+                    return description
+
+            except Exception as e:
+                logger.error(f"データセット解説生成エラー (試行 {attempt + 1}/{retry_count}): {e}")
+                if attempt < retry_count - 1:
+                    time.sleep(2 ** attempt)
+
+        return None
+
+    def analyze_dataset_context(self, dataset_name: str, dataset_summary: str,
                               user_question: str, retry_count: int = 3) -> Optional[str]:
         """データセットの文脈的解説生成"""
         prompt = f"""あなたはデータサイエンス・研究支援の専門家です。
@@ -126,23 +177,52 @@ class GeminiClient:
         
         return None
     
-    def analyze_text(self, text: str, prompt_template: str, 
+    def analyze_text(self, text: str, prompt_template: str,
                     retry_count: int = 3) -> Optional[Dict[str, Any]]:
         """テキストを解析"""
         prompt = prompt_template.format(text=text)
-        
+
         for attempt in range(retry_count):
             try:
                 response = self.model.generate_content(prompt)
-                
+
                 if response.text:
                     # JSON形式で返されることを期待
                     try:
-                        result = json.loads(response.text)
+                        # レスポンステキストをクリーンアップ（マークダウンのコードブロックを除去）
+                        response_text = response.text.strip()
+
+                        # マークダウンコードブロックの除去
+                        if response_text.startswith('```json'):
+                            response_text = response_text[7:]
+                        elif response_text.startswith('```'):
+                            response_text = response_text[3:]
+
+                        if response_text.endswith('```'):
+                            response_text = response_text[:-3]
+
+                        response_text = response_text.strip()
+
+                        # 改行を正規化（\r\nを\nに統一）
+                        response_text = response_text.replace('\r\n', '\n')
+
+                        # JSONパース試行
+                        result = json.loads(response_text)
                         return result
-                    except json.JSONDecodeError:
-                        logger.warning("レスポンスがJSON形式ではありません")
-                        return {"raw_response": response.text}
+
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"JSONパースエラー (試行 {attempt + 1}/{retry_count}): {e}")
+                        logger.error(f"問題のレスポンス: {response.text[:500]}")
+
+                        # 最後の試行でない場合はリトライ
+                        if attempt < retry_count - 1:
+                            logger.info("リトライします...")
+                            time.sleep(2 ** attempt)
+                            continue
+
+                        # 最後の試行でも失敗した場合はNoneを返す
+                        logger.error("最大試行回数に達しました。JSONパースに失敗しました。")
+                        return None
                 else:
                     logger.warning("空のレスポンスが返されました")
                     
@@ -166,6 +246,75 @@ class GeminiClient:
             logger.warning(f"未対応のファイルタイプ: {file_type}")
             return None
     
+    def analyze_paper_metadata(self, file_name: str, content: str) -> Optional[Dict[str, Any]]:
+        """論文/ポスターのPDFからメタデータ（タイトル、著者、要約など）を抽出"""
+        prompt = f"""以下の研究論文またはポスターのPDFテキストから、メタデータを抽出してJSON形式で返してください。
+
+ファイル名: {file_name}
+
+PDF内容（最初の部分）:
+{content[:10000]}
+
+必ず以下のJSON形式のみを返してください（説明文などは不要です）:
+{{
+    "title": "論文/ポスターのタイトル（PDFから抽出、なければファイル名から推測）",
+    "authors": "著者名（複数いればカンマ区切り）",
+    "abstract": "要約・アブストラクト（200文字以内、なければPDFの最初の部分から作成）",
+    "keywords": "キーワード（カンマ区切り）",
+    "year": "発表年（もし記載があれば、なければ空文字）",
+    "conference_or_journal": "学会名または雑誌名（もし記載があれば、なければ空文字）",
+    "cited_datasets": ["引用されているデータセット名1", "引用されているデータセット名2"],
+    "research_field": "研究分野"
+}}
+
+重要:
+- 必ず有効なJSONのみを返してください
+- titleは論文の正式なタイトルを抽出してください
+- authorsは著者全員を記載してください
+- cited_datasetsには本文中で言及されているデータセット名を全て含めてください（なければ空配列）
+- すべてのフィールドは必須です（値がなければ空文字または空配列を使用）
+"""
+        # analyze_textを使わず直接APIを呼び出す
+        for attempt in range(3):
+            try:
+                response = self.model.generate_content(prompt)
+
+                if response.text:
+                    try:
+                        # レスポンステキストをクリーンアップ
+                        response_text = response.text.strip()
+
+                        # マークダウンコードブロックの除去
+                        if response_text.startswith('```json'):
+                            response_text = response_text[7:]
+                        elif response_text.startswith('```'):
+                            response_text = response_text[3:]
+
+                        if response_text.endswith('```'):
+                            response_text = response_text[:-3]
+
+                        response_text = response_text.strip()
+
+                        # JSONパース
+                        result = json.loads(response_text)
+                        logger.info(f"論文メタデータ解析成功: {file_name}")
+                        return result
+
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"JSONパースエラー (試行 {attempt + 1}/3): {e}")
+                        if attempt < 2:
+                            time.sleep(2 ** attempt)
+                            continue
+                        logger.error(f"レスポンス内容: {response.text[:500]}")
+                        return None
+
+            except Exception as e:
+                logger.error(f"論文メタデータ解析エラー (試行 {attempt + 1}/3): {e}")
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+
+        return None
+
     def _analyze_pdf_content(self, content: str) -> Optional[Dict[str, Any]]:
         """PDF文書を解析"""
         prompt_template = """
