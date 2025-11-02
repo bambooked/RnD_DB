@@ -115,14 +115,14 @@
                 </div>
                 
                 <!-- チャット履歴エリア -->
-                <div id="chat-history" class="h-96 border border-gray-200 rounded-md p-4 mb-4 overflow-y-auto bg-gray-50">
+                <div id="chat-history" class="h-96 border border-gray-200 rounded-md p-4 mb-4 overflow-y-auto bg-gray-50" style="scroll-behavior: smooth;">
                     <div id="chat-welcome" class="text-center text-gray-500 py-8">
                         <i class="fas fa-comment-alt text-4xl mb-2"></i>
                         <p class="font-medium">研究について何でもお聞きください！</p>
                         <p class="text-sm mt-1">データベース内の論文・ポスター・データセットを参照して回答します</p>
                         <div class="mt-4 text-xs text-gray-400">
-                            現在のデータ: 論文<span id="chat-papers-count">{{ stats.papers }}</span>件, 
-                            ポスター<span id="chat-posters-count">{{ stats.posters }}</span>件, 
+                            登録資料: 論文<span id="chat-papers-count">{{ stats.papers }}</span>件 |
+                            ポスター<span id="chat-posters-count">{{ stats.posters }}</span>件 |
                             データセット<span id="chat-datasets-count">{{ stats.datasets }}</span>件
                         </div>
                     </div>
@@ -157,19 +157,22 @@
                     
                     <!-- クイックアクション -->
                     <div class="flex flex-wrap gap-2">
-                        <button onclick="quickQuestion('AI開発に使えるデータセットはありますか？')" class="text-xs bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full hover:bg-yellow-200 transition-colors">
-                            <i class="fas fa-brain mr-1"></i>AI開発用
+                        <button onclick="quickQuestion('研究の進め方について相談したい')" class="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-colors">
+                            <i class="fas fa-route mr-1"></i>研究の進め方
                         </button>
-                        <button onclick="quickQuestion('ビジネス分析に使えるデータセットはありますか？')" class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200 transition-colors">
-                            <i class="fas fa-chart-line mr-1"></i>ビジネス分析用
+                        <button onclick="quickQuestion('データ分析の手法について教えてください')" class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200 transition-colors">
+                            <i class="fas fa-chart-bar mr-1"></i>分析手法
                         </button>
-                        <button onclick="quickQuestion('社会課題の分析に使えるデータセットはありますか？')" class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-200 transition-colors">
-                            <i class="fas fa-users mr-1"></i>社会課題分析用
+                        <button onclick="quickQuestion('論文執筆のアドバイスが欲しい')" class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-200 transition-colors">
+                            <i class="fas fa-pen mr-1"></i>論文執筆
                         </button>
-                        <button onclick="showDatabaseOverview()" class="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-colors">
+                        <button onclick="quickQuestion('関連する先行研究を教えてください')" class="text-xs bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full hover:bg-yellow-200 transition-colors">
+                            <i class="fas fa-book mr-1"></i>先行研究
+                        </button>
+                        <button onclick="showDatabaseOverview()" class="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-200 transition-colors">
                             <i class="fas fa-database mr-1"></i>全データ概要
                         </button>
-                        <button onclick="clearChat()" class="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-200 transition-colors">
+                        <button onclick="clearChat()" class="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full hover:bg-red-200 transition-colors">
                             <i class="fas fa-trash mr-1"></i>履歴クリア
                         </button>
                     </div>
@@ -374,20 +377,12 @@
                         </div>
                     </div>
 
-                    <!-- カラム統計情報 -->
-                    <div id="column-stats-section" class="hidden mb-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h5 class="text-lg font-bold text-gray-800 flex items-center">
-                                <i class="fas fa-chart-bar text-purple-500 mr-2"></i>
-                                カラム統計
-                            </h5>
-                            <span class="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full" id="column-count-badge">
-                                <!-- 動的に生成 -->
-                            </span>
-                        </div>
-                        <div id="column-stats-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <!-- 動的に生成 -->
-                        </div>
+                    <!-- データ統計サマリー（シンプル） -->
+                    <div id="dataset-stats-summary" class="hidden mb-4 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg">
+                        <p class="text-sm text-gray-700">
+                            <i class="fas fa-info-circle text-blue-500 mr-2"></i>
+                            <span id="stats-summary-text" class="font-medium"></span>
+                        </p>
                     </div>
 
                     <!-- データテーブル -->
@@ -767,8 +762,8 @@
                     <p class="font-medium">研究について何でもお聞きください！</p>
                     <p class="text-sm mt-1">データベース内の論文・ポスター・データセットを参照して回答します</p>
                     <div class="mt-4 text-xs text-gray-400">
-                        現在のデータ: 論文<span class="chat-papers-stat">${document.getElementById('papers-count').textContent}</span>件,
-                        ポスター<span class="chat-posters-stat">${document.getElementById('posters-count').textContent}</span>件,
+                        登録資料: 論文<span class="chat-papers-stat">${document.getElementById('papers-count').textContent}</span>件 |
+                        ポスター<span class="chat-posters-stat">${document.getElementById('posters-count').textContent}</span>件 |
                         データセット<span class="chat-datasets-stat">${document.getElementById('datasets-count').textContent}</span>件
                     </div>
                 </div>
@@ -828,6 +823,7 @@
                 </div>
             `;
             historyDiv.appendChild(typingDiv);
+            // チャットエリア内でスムーズスクロール
             historyDiv.scrollTop = historyDiv.scrollHeight;
             
             try {
@@ -855,6 +851,9 @@
                 // 入力中インジケーター削除
                 document.getElementById('typing-indicator').remove();
 
+                // 現在のスクロール位置を保存
+                const currentScrollY = window.scrollY || window.pageYOffset;
+
                 // AIレスポンスを追加
                 addChatMessage('ai', data.advice, data);
 
@@ -862,6 +861,14 @@
                 console.log('Calling updateRelatedItems...');
                 updateRelatedItems(data);
                 console.log('updateRelatedItems completed');
+
+                // スクロール位置を復元（レイアウトシフト防止）
+                // 二重RAFでブラウザのレンダリング完了を確実に待つ
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        window.scrollTo(0, currentScrollY);
+                    });
+                });
                 
             } catch (error) {
                 console.error('チャットエラー:', error);
@@ -949,6 +956,7 @@
             }
             
             historyDiv.appendChild(messageDiv);
+            // チャットエリア内でスムーズスクロール
             historyDiv.scrollTop = historyDiv.scrollHeight;
             
             // チャット履歴に保存
@@ -1117,8 +1125,19 @@
                 html += '</div></div>';
             }
 
+            // 現在のスクロール位置を保存
+            const scrollY = window.scrollY || window.pageYOffset;
+
             content.innerHTML = html;
             section.classList.remove('hidden');
+
+            // スクロール位置を復元（セクション表示によるレイアウトシフトを防ぐ）
+            // 二重RAFでレンダリング完了後に確実に復元
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    window.scrollTo(0, scrollY);
+                });
+            });
         }
 
         // データベース概要表示
@@ -1623,6 +1642,7 @@
 
                 // プレビューセクションを非表示にリセット
                 document.getElementById('data-preview-section').classList.add('hidden');
+                document.getElementById('dataset-stats-summary').classList.add('hidden');
 
                 // モーダルを表示
                 modal.classList.remove('hidden');
@@ -1641,6 +1661,7 @@
             const previewTableContainer = document.getElementById('preview-table-container');
             const previewError = document.getElementById('preview-error');
             const previewFileNameSpan = document.getElementById('preview-file-name');
+            const summarySection = document.getElementById('dataset-stats-summary');
 
             // プレビューセクションを表示
             previewSection.classList.remove('hidden');
@@ -1650,6 +1671,7 @@
             previewLoading.classList.remove('hidden');
             previewTableContainer.classList.add('hidden');
             previewError.classList.add('hidden');
+            summarySection.classList.add('hidden');
 
             // スクロールしてプレビューセクションを表示
             previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1776,127 +1798,33 @@
                         document.getElementById('preview-row-count').textContent = preview.rows.length;
                     }
 
-                    // カラム統計情報を表示（HuggingFace風）
+                    // シンプルな統計情報を表示
                     if (preview.statistics) {
-                        const statsSection = document.getElementById('column-stats-section');
-                        const statsGrid = document.getElementById('column-stats-grid');
-                        const columnCountBadge = document.getElementById('column-count-badge');
-                        statsGrid.innerHTML = '';
-
+                        const summarySection = document.getElementById('dataset-stats-summary');
                         const totalRows = preview.total_rows || preview.rows.length;
                         const columnCount = Object.keys(preview.statistics).length;
-                        columnCountBadge.innerHTML = `<i class="fas fa-columns mr-1"></i>${columnCount} カラム`;
+
+                        // データ型の分布を計算
+                        let numericCount = 0;
+                        let textCount = 0;
 
                         Object.keys(preview.statistics).forEach(col => {
-                            const stats = preview.statistics[col];
-                            const statCard = document.createElement('div');
-
-                            // データ型に応じた色とアイコン
-                            let typeColor = 'text-gray-600';
-                            let typeIcon = 'fa-question';
-                            let typeBgColor = 'bg-gray-50';
-
-                            const typeStr = stats.type.toLowerCase();
+                            const typeStr = preview.statistics[col].type.toLowerCase();
                             if (typeStr.includes('int') || typeStr.includes('float')) {
-                                typeColor = 'text-blue-600';
-                                typeIcon = 'fa-hashtag';
-                                typeBgColor = 'bg-blue-50';
+                                numericCount++;
                             } else if (typeStr.includes('object') || typeStr.includes('string')) {
-                                typeColor = 'text-green-600';
-                                typeIcon = 'fa-font';
-                                typeBgColor = 'bg-green-50';
-                            } else if (typeStr.includes('bool')) {
-                                typeColor = 'text-purple-600';
-                                typeIcon = 'fa-toggle-on';
-                                typeBgColor = 'bg-purple-50';
-                            } else if (typeStr.includes('datetime')) {
-                                typeColor = 'text-orange-600';
-                                typeIcon = 'fa-calendar';
-                                typeBgColor = 'bg-orange-50';
+                                textCount++;
                             }
-
-                            // NULL率とユニーク率の計算
-                            const nullRate = totalRows > 0 ? (stats.null_count / totalRows * 100).toFixed(1) : 0;
-                            const uniqueRate = totalRows > 0 ? (stats.unique_count / totalRows * 100).toFixed(1) : 0;
-
-                            statCard.className = `${typeBgColor} border-2 border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow`;
-
-                            let statsHtml = `
-                                <div class="flex items-center justify-between mb-3">
-                                    <div class="font-bold text-sm text-gray-800 truncate flex-1" title="${escapeHtml(col)}">${escapeHtml(col)}</div>
-                                    <div class="ml-2 ${typeColor} flex items-center">
-                                        <i class="fas ${typeIcon} text-lg"></i>
-                                    </div>
-                                </div>
-
-                                <div class="space-y-2 text-xs">
-                                    <!-- データ型 -->
-                                    <div class="flex items-center justify-between py-1 px-2 bg-white rounded">
-                                        <span class="font-medium text-gray-600">型</span>
-                                        <span class="${typeColor} font-semibold">${escapeHtml(stats.type)}</span>
-                                    </div>
-
-                                    <!-- NULL値 -->
-                                    <div class="py-1">
-                                        <div class="flex items-center justify-between mb-1">
-                                            <span class="font-medium text-gray-600">NULL値</span>
-                                            <span class="text-gray-800 font-semibold">${stats.null_count} <span class="text-gray-500">(${nullRate}%)</span></span>
-                                        </div>
-                                        <div class="w-full bg-gray-200 rounded-full h-2">
-                                            <div class="bg-red-500 h-2 rounded-full" style="width: ${nullRate}%"></div>
-                                        </div>
-                                    </div>
-
-                                    <!-- ユニーク値 -->
-                                    <div class="py-1">
-                                        <div class="flex items-center justify-between mb-1">
-                                            <span class="font-medium text-gray-600">ユニーク</span>
-                                            <span class="text-gray-800 font-semibold">${stats.unique_count} <span class="text-gray-500">(${uniqueRate}%)</span></span>
-                                        </div>
-                                        <div class="w-full bg-gray-200 rounded-full h-2">
-                                            <div class="bg-green-500 h-2 rounded-full" style="width: ${Math.min(uniqueRate, 100)}%"></div>
-                                        </div>
-                                    </div>
-                            `;
-
-                            // 数値型の統計情報
-                            if (stats.min !== undefined) {
-                                statsHtml += `
-                                    <div class="mt-3 pt-2 border-t border-gray-300">
-                                        <div class="font-semibold text-gray-700 mb-2 flex items-center">
-                                            <i class="fas fa-chart-line mr-1 text-xs"></i>
-                                            数値統計
-                                        </div>
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <div class="py-1 px-2 bg-white rounded">
-                                                <div class="text-gray-500 text-[10px]">最小値</div>
-                                                <div class="font-bold text-gray-800">${stats.min !== null ? stats.min.toFixed(2) : 'N/A'}</div>
-                                            </div>
-                                            <div class="py-1 px-2 bg-white rounded">
-                                                <div class="text-gray-500 text-[10px]">最大値</div>
-                                                <div class="font-bold text-gray-800">${stats.max !== null ? stats.max.toFixed(2) : 'N/A'}</div>
-                                            </div>
-                                            <div class="py-1 px-2 bg-white rounded">
-                                                <div class="text-gray-500 text-[10px]">平均値</div>
-                                                <div class="font-bold text-gray-800">${stats.mean !== null ? stats.mean.toFixed(2) : 'N/A'}</div>
-                                            </div>
-                                            <div class="py-1 px-2 bg-white rounded">
-                                                <div class="text-gray-500 text-[10px]">中央値</div>
-                                                <div class="font-bold text-gray-800">${stats.median !== null ? stats.median.toFixed(2) : 'N/A'}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                `;
-                            }
-
-                            statsHtml += '</div>';
-                            statCard.innerHTML = statsHtml;
-                            statsGrid.appendChild(statCard);
                         });
 
-                        statsSection.classList.remove('hidden');
-                    } else {
-                        document.getElementById('column-stats-section').classList.add('hidden');
+                        // 統計テキストを生成
+                        const parts = [];
+                        parts.push(`${totalRows.toLocaleString()} rows × ${columnCount} columns`);
+                        if (numericCount > 0) parts.push(`${numericCount} numeric`);
+                        if (textCount > 0) parts.push(`${textCount} text`);
+
+                        document.getElementById('stats-summary-text').textContent = parts.join(' | ');
+                        summarySection.classList.remove('hidden');
                     }
                 }
 

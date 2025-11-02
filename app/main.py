@@ -408,10 +408,23 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
 
                             if existing_file:
                                 # 既存ファイルの更新
+                                needs_file_update = False
+
                                 if file_analysis['schema_info']:
                                     # スキーマ情報を更新（完全置換ではなくマージする場合はロジックを変更）
                                     existing_file.schema_info = file_analysis['schema_info']
                                     existing_file.summary = file_analysis['summary']
+                                    needs_file_update = True
+
+                                # drive_urlが無い場合は追加
+                                if not existing_file.drive_url:
+                                    drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
+                                    existing_file.drive_url = drive_url
+                                    existing_file.drive_file_id = file_info['id']
+                                    needs_file_update = True
+                                    logger.info(f"drive_url を設定: {file_info['name']}")
+
+                                if needs_file_update:
                                     dataset_file_repo.update(existing_file)
                                     logger.info(f"データセットファイル情報更新: {file_info['name']}")
                             else:
@@ -775,11 +788,31 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str, service):
 
             if existing_paper:
                 # 既存の論文を更新（内容が不完全な場合のみ）
-                existing_paper.title = metadata.get('title', existing_paper.title)
-                existing_paper.authors = metadata.get('authors', existing_paper.authors)
-                existing_paper.abstract = metadata.get('abstract', existing_paper.abstract)
-                existing_paper.keywords = metadata.get('keywords', existing_paper.keywords)
-                paper_repo.update(existing_paper)
+                needs_update = False
+
+                if metadata.get('title') and metadata.get('title') != existing_paper.title:
+                    existing_paper.title = metadata.get('title', existing_paper.title)
+                    needs_update = True
+                if metadata.get('authors'):
+                    existing_paper.authors = metadata.get('authors', existing_paper.authors)
+                    needs_update = True
+                if metadata.get('abstract'):
+                    existing_paper.abstract = metadata.get('abstract', existing_paper.abstract)
+                    needs_update = True
+                if metadata.get('keywords'):
+                    existing_paper.keywords = metadata.get('keywords', existing_paper.keywords)
+                    needs_update = True
+
+                # drive_url が無い場合は追加
+                if not existing_paper.drive_url:
+                    drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
+                    existing_paper.drive_url = drive_url
+                    existing_paper.drive_file_id = file_info['id']
+                    needs_update = True
+                    logger.info(f"drive_url を設定: {file_info['name']}")
+
+                if needs_update:
+                    paper_repo.update(existing_paper)
 
                 # cited_datasetsを保存
                 cited_datasets = metadata.get('cited_datasets', [])
@@ -839,11 +872,31 @@ async def process_drive_file(file: Dict[str, Any], folder_name: str, service):
 
             if existing_poster:
                 # 既存のポスターを更新（内容が不完全な場合のみ）
-                existing_poster.title = metadata.get('title', existing_poster.title)
-                existing_poster.authors = metadata.get('authors', existing_poster.authors)
-                existing_poster.abstract = metadata.get('abstract', existing_poster.abstract)
-                existing_poster.keywords = metadata.get('keywords', existing_poster.keywords)
-                poster_repo.update(existing_poster)
+                needs_update = False
+
+                if metadata.get('title') and metadata.get('title') != existing_poster.title:
+                    existing_poster.title = metadata.get('title', existing_poster.title)
+                    needs_update = True
+                if metadata.get('authors'):
+                    existing_poster.authors = metadata.get('authors', existing_poster.authors)
+                    needs_update = True
+                if metadata.get('abstract'):
+                    existing_poster.abstract = metadata.get('abstract', existing_poster.abstract)
+                    needs_update = True
+                if metadata.get('keywords'):
+                    existing_poster.keywords = metadata.get('keywords', existing_poster.keywords)
+                    needs_update = True
+
+                # drive_url が無い場合は追加
+                if not existing_poster.drive_url:
+                    drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
+                    existing_poster.drive_url = drive_url
+                    existing_poster.drive_file_id = file_info['id']
+                    needs_update = True
+                    logger.info(f"drive_url を設定: {file_info['name']}")
+
+                if needs_update:
+                    poster_repo.update(existing_poster)
 
                 # cited_datasetsを保存
                 cited_datasets = metadata.get('cited_datasets', [])
@@ -1824,25 +1877,62 @@ async def generate_file_preview(service, file_id: str, file_name: str, file_type
 
                 # データプレビュー
                 preview_data['columns'] = list(df.columns)
-                preview_data['rows'] = df.to_dict(orient='records')
                 preview_data['total_rows'] = len(df)
                 preview_data['dtypes'] = {col: str(dtype) for col, dtype in df.dtypes.items()}
+
+                # inf/-inf/NaN をNoneに置換（JSON互換性のため）
+                import numpy as np
+                import math
+
+                def clean_value(val):
+                    """JSON互換性のためにinf/NaN/naをNoneに変換"""
+                    if val is None:
+                        return None
+                    if isinstance(val, float):
+                        if math.isnan(val) or math.isinf(val):
+                            return None
+                    return val
+
+                rows = df.to_dict(orient='records')
+                preview_data['rows'] = [
+                    {k: clean_value(v) for k, v in row.items()}
+                    for row in rows
+                ]
 
                 # 統計情報
                 stats = {}
                 for col in df.columns:
+                    # unique_count の計算（ハッシュ化できない型の場合はスキップ）
+                    try:
+                        unique_count = int(df[col].nunique())
+                    except (TypeError, AttributeError):
+                        # dict, list など unhashable type の場合
+                        unique_count = -1
+
                     col_stats = {
                         'type': str(df[col].dtype),
                         'null_count': int(df[col].isnull().sum()),
-                        'unique_count': int(df[col].nunique())
+                        'unique_count': unique_count
                     }
 
                     # 数値型の場合は統計情報を追加
                     if pd.api.types.is_numeric_dtype(df[col]):
-                        col_stats['min'] = float(df[col].min()) if not pd.isna(df[col].min()) else None
-                        col_stats['max'] = float(df[col].max()) if not pd.isna(df[col].max()) else None
-                        col_stats['mean'] = float(df[col].mean()) if not pd.isna(df[col].mean()) else None
-                        col_stats['median'] = float(df[col].median()) if not pd.isna(df[col].median()) else None
+                        import math
+                        import warnings
+
+                        # 空のカラムの警告を抑制
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", category=RuntimeWarning)
+                            min_val = float(df[col].min()) if not pd.isna(df[col].min()) else None
+                            max_val = float(df[col].max()) if not pd.isna(df[col].max()) else None
+                            mean_val = float(df[col].mean()) if not pd.isna(df[col].mean()) else None
+                            median_val = float(df[col].median()) if not pd.isna(df[col].median()) else None
+
+                        # inf/-inf をNoneに変換
+                        col_stats['min'] = min_val if min_val is not None and math.isfinite(min_val) else None
+                        col_stats['max'] = max_val if max_val is not None and math.isfinite(max_val) else None
+                        col_stats['mean'] = mean_val if mean_val is not None and math.isfinite(mean_val) else None
+                        col_stats['median'] = median_val if median_val is not None and math.isfinite(median_val) else None
 
                     stats[col] = col_stats
 
@@ -1857,11 +1947,72 @@ async def generate_file_preview(service, file_id: str, file_name: str, file_type
 
                     preview_data['format'] = 'jsonl'
                     preview_data['total_rows'] = len(lines)
-                    preview_data['rows'] = data
 
                     if data:
                         # 最初のレコードからカラムを抽出
                         preview_data['columns'] = list(data[0].keys()) if isinstance(data[0], dict) else []
+
+                        # DataFrameに変換して統計情報を生成
+                        df = pd.DataFrame(data)
+
+                        # inf/-inf/NaN をNoneに置換（JSON互換性のため）
+                        import numpy as np
+                        import math
+
+                        def clean_value(val):
+                            """JSON互換性のためにinf/NaN/naをNoneに変換"""
+                            if val is None:
+                                return None
+                            if isinstance(val, float):
+                                if math.isnan(val) or math.isinf(val):
+                                    return None
+                            return val
+
+                        rows = df.to_dict(orient='records')
+                        preview_data['rows'] = [
+                            {k: clean_value(v) for k, v in row.items()}
+                            for row in rows
+                        ]
+
+                        # 統計情報を生成
+                        stats = {}
+                        for col in df.columns:
+                            # unique_count の計算（ハッシュ化できない型の場合はスキップ）
+                            try:
+                                unique_count = int(df[col].nunique())
+                            except (TypeError, AttributeError):
+                                # dict, list など unhashable type の場合
+                                unique_count = -1
+
+                            col_stats = {
+                                'type': str(df[col].dtype),
+                                'null_count': int(df[col].isnull().sum()),
+                                'unique_count': unique_count
+                            }
+
+                            # 数値型の場合は統計情報を追加
+                            if pd.api.types.is_numeric_dtype(df[col]):
+                                import warnings
+
+                                # 空のカラムの警告を抑制
+                                with warnings.catch_warnings():
+                                    warnings.simplefilter("ignore", category=RuntimeWarning)
+                                    min_val = float(df[col].min()) if not pd.isna(df[col].min()) else None
+                                    max_val = float(df[col].max()) if not pd.isna(df[col].max()) else None
+                                    mean_val = float(df[col].mean()) if not pd.isna(df[col].mean()) else None
+                                    median_val = float(df[col].median()) if not pd.isna(df[col].median()) else None
+
+                                # inf/-inf をNoneに変換
+                                col_stats['min'] = min_val if min_val is not None and math.isfinite(min_val) else None
+                                col_stats['max'] = max_val if max_val is not None and math.isfinite(max_val) else None
+                                col_stats['mean'] = mean_val if mean_val is not None and math.isfinite(mean_val) else None
+                                col_stats['median'] = median_val if median_val is not None and math.isfinite(median_val) else None
+
+                            stats[col] = col_stats
+
+                        preview_data['statistics'] = stats
+                    else:
+                        preview_data['rows'] = data
                 else:
                     # JSONファイルの解析
                     with open(tmp_path, 'r', encoding='utf-8') as f:
@@ -1870,10 +2021,66 @@ async def generate_file_preview(service, file_id: str, file_name: str, file_type
                     if isinstance(data, list):
                         preview_data['format'] = 'json_array'
                         preview_data['total_rows'] = min(len(data), max_rows)
-                        preview_data['rows'] = data[:max_rows]
 
                         if data and isinstance(data[0], dict):
                             preview_data['columns'] = list(data[0].keys())
+
+                            # DataFrameに変換して統計情報を生成
+                            df = pd.DataFrame(data[:max_rows])
+
+                            # inf/-inf/NaN をNoneに置換（JSON互換性のため）
+                            import numpy as np
+                            import math
+
+                            def clean_value(val):
+                                if val is None:
+                                    return None
+                                if isinstance(val, float):
+                                    if math.isnan(val) or math.isinf(val):
+                                        return None
+                                return val
+
+                            rows = df.to_dict(orient='records')
+                            preview_data['rows'] = [
+                                {k: clean_value(v) for k, v in row.items()}
+                                for row in rows
+                            ]
+
+                            # 統計情報を生成
+                            stats = {}
+                            for col in df.columns:
+                                # unique_count の計算（ハッシュ化できない型の場合はスキップ）
+                                try:
+                                    unique_count = int(df[col].nunique())
+                                except (TypeError, AttributeError):
+                                    # dict, list など unhashable type の場合
+                                    unique_count = -1
+
+                                col_stats = {
+                                    'type': str(df[col].dtype),
+                                    'null_count': int(df[col].isnull().sum()),
+                                    'unique_count': unique_count
+                                }
+
+                                if pd.api.types.is_numeric_dtype(df[col]):
+                                    import warnings
+                                    with warnings.catch_warnings():
+                                        warnings.simplefilter("ignore", category=RuntimeWarning)
+                                        min_val = float(df[col].min()) if not pd.isna(df[col].min()) else None
+                                        max_val = float(df[col].max()) if not pd.isna(df[col].max()) else None
+                                        mean_val = float(df[col].mean()) if not pd.isna(df[col].mean()) else None
+                                        median_val = float(df[col].median()) if not pd.isna(df[col].median()) else None
+
+                                    col_stats['min'] = min_val if min_val is not None and math.isfinite(min_val) else None
+                                    col_stats['max'] = max_val if max_val is not None and math.isfinite(max_val) else None
+                                    col_stats['mean'] = mean_val if mean_val is not None and math.isfinite(mean_val) else None
+                                    col_stats['median'] = median_val if median_val is not None and math.isfinite(median_val) else None
+
+                                stats[col] = col_stats
+
+                            preview_data['statistics'] = stats
+                        else:
+                            preview_data['rows'] = data[:max_rows]
                     else:
                         preview_data['format'] = 'json_object'
                         preview_data['data'] = data

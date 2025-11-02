@@ -6,6 +6,8 @@ dist/
 wheels/
 data/
 credentials/
+vector_db/
+database/
 *.egg-info
 
 # Virtual environments
