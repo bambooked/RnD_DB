@@ -294,7 +294,12 @@ curl -X POST http://localhost:8000/api/vector/search \
 RnD_DB/
 ├── web_app.py                      # メインWebアプリケーション（エントリーポイント）
 ├── templates/
-│   └── index.html                 # フロントエンドUI（TailwindCSS）
+│   ├── base.html                  # 全ページ共通レイアウト
+│   ├── dashboard.html             # ダッシュボード
+│   ├── chat.html                  # AI研究相談チャット
+│   ├── search.html                # 研究データ検索
+│   ├── drive_sync.html            # Google Drive同期
+│   └── settings.html              # 設定ダッシュボード
 ├── static/                        # 静的ファイル（CSS/JS/画像）
 ├── services/                      # API・サービス層
 │   ├── api/                       # HTTP APIエンドポイント

@@ -137,8 +137,60 @@
     {% block styles %}{% endblock %}
     {% block head_extra %}{% endblock %}
 </head>
-<body class="{% block body_class %}bg-gray-50{% endblock %}">
-    {% block content %}{% endblock %}
+<body class="{% block body_class %}bg-slate-100{% endblock %}">
+    {% set page = current_page if current_page is defined else '' %}
+    {% set status = system_status if system_status is defined and system_status else {} %}
+    <div class="min-h-screen flex flex-col">
+        <nav class="bg-slate-900 text-white shadow-lg">
+            <div class="max-w-6xl mx-auto px-4">
+                <div class="h-16 flex items-center justify-between gap-6">
+                    <a href="/dashboard" class="flex items-center gap-2 text-lg font-semibold tracking-wide">
+                        <i class="fas fa-flask text-emerald-300"></i>
+                        <span>R&amp;D DB</span>
+                    </a>
+                    <div class="flex items-center gap-1 text-sm font-medium">
+                        <a href="/dashboard"
+                           class="px-3 py-2 rounded-md transition-colors {% if page == 'dashboard' %}bg-slate-800 text-white{% else %}text-slate-200 hover:text-white hover:bg-slate-800/60{% endif %}">
+                            ダッシュボード
+                        </a>
+                        <a href="/chat"
+                           class="px-3 py-2 rounded-md transition-colors {% if page == 'chat' %}bg-slate-800 text-white{% else %}text-slate-200 hover:text-white hover:bg-slate-800/60{% endif %}">
+                            ChatBOT
+                        </a>
+                        <a href="/search"
+                           class="px-3 py-2 rounded-md transition-colors {% if page == 'search' %}bg-slate-800 text-white{% else %}text-slate-200 hover:text-white hover:bg-slate-800/60{% endif %}">
+                            検索
+                        </a>
+                        <a href="/drive-sync"
+                           class="px-3 py-2 rounded-md transition-colors {% if page == 'drive-sync' %}bg-slate-800 text-white{% else %}text-slate-200 hover:text-white hover:bg-slate-800/60{% endif %}">
+                            Google Drive同期
+                        </a>
+                        <a href="/settings"
+                           class="px-3 py-2 rounded-md transition-colors {% if page == 'settings' %}bg-slate-800 text-white{% else %}text-slate-200 hover:text-white hover:bg-slate-800/60{% endif %}">
+                            設定
+                        </a>
+                    </div>
+                    <div class="hidden md:flex items-center gap-4 text-xs text-slate-200">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full {% if status.get('database') %}bg-emerald-400{% else %}bg-amber-400{% endif %}"></span>
+                            <span>DB</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full {% if status.get('google_drive') %}bg-emerald-400{% else %}bg-amber-400{% endif %}"></span>
+                            <span>Drive</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full {% if status.get('auth') %}bg-emerald-400{% else %}bg-amber-400{% endif %}"></span>
+                            <span>Auth</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        <main class="flex-1">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
     {% block scripts %}{% endblock %}
 </body>
 </html>
