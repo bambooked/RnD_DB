@@ -4,62 +4,11 @@
 
 {% block content %}
     <section class="bg-slate-800 text-white shadow-inner">
-        <div class="max-w-6xl mx-auto px-4 py-10 space-y-6">
+        <div class="max-w-6xl mx-auto px-4 py-10">
             <div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
                 <div>
                     <h1 class="text-3xl font-bold">AI研究相談チャット</h1>
                     <p class="text-slate-200 mt-2">研究計画、データベース検索、分析手法の相談をサポートします。</p>
-                </div>
-                <div class="flex flex-col sm:flex-row sm:items-center gap-4">
-                    <a href="/drive-sync" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
-                        <i class="fab fa-google-drive"></i>
-                        <span>Google Drive同期へ</span>
-                    </a>
-                    <div id="system-status" class="flex items-center gap-3 text-xs text-slate-200">
-                        <span class="flex items-center gap-2">
-                            <span>Drive</span>
-                            <span id="google-drive-status" class="w-3 h-3 rounded-full {{ 'bg-emerald-400' if system_status.google_drive else 'bg-amber-400' }}"></span>
-                        </span>
-                        <span class="flex items-center gap-2">
-                            <span>DB</span>
-                            <span id="database-status" class="w-3 h-3 rounded-full {{ 'bg-emerald-400' if system_status.database else 'bg-amber-400' }}"></span>
-                        </span>
-                    </div>
-                </div>
-            </div>
-            <div class="grid gap-4 sm:grid-cols-3">
-                <div class="bg-white/10 border border-white/20 rounded-lg p-4 backdrop-blur">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                            <i class="fas fa-file-alt text-blue-200"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-slate-200">論文</p>
-                            <p id="papers-count" class="text-2xl font-semibold">{{ stats.papers }}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-white/10 border border-white/20 rounded-lg p-4 backdrop-blur">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                            <i class="fas fa-image text-emerald-200"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-slate-200">ポスター</p>
-                            <p id="posters-count" class="text-2xl font-semibold">{{ stats.posters }}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-white/10 border border-white/20 rounded-lg p-4 backdrop-blur">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
-                            <i class="fas fa-database text-purple-200"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-slate-200">データセット</p>
-                            <p id="datasets-count" class="text-2xl font-semibold">{{ stats.datasets }}</p>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -138,11 +87,6 @@
                             <i class="fas fa-comment-alt text-4xl"></i>
                             <p class="font-medium">研究について何でもお聞きください！</p>
                             <p class="text-sm">データベース内の論文・ポスター・データセットを参照して回答します</p>
-                            <div class="mt-4 text-xs text-slate-400 space-x-3">
-                                <span>論文 <span id="chat-papers-count">{{ stats.papers }}</span>件</span>
-                                <span>ポスター <span id="chat-posters-count">{{ stats.posters }}</span>件</span>
-                                <span>データセット <span id="chat-datasets-count">{{ stats.datasets }}</span>件</span>
-                            </div>
                         </div>
                     </div>
 
