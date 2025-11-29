@@ -298,11 +298,7 @@ async def sync_root_folder_contents(folder_type: str, root_folder_id: str, servi
     # フェーズ1: データセットを先に処理（cited_datasetsの参照先を作成）
     logger.info("Phase 1: データセットの処理開始")
     if folder_type in ["all", "datasets"]:
-        logger.info(f"データセットフォルダを処理: {len(child_entries)}個のサブフォルダ候補")
-        dataset_files_count = await process_datasets_folder(child_entries, service)
-        files_processed += dataset_files_count
-    else:
-        # 指定タイプのみ処理
+        # child_entriesから「datasets」フォルダを探す
         for entry in child_entries:
             if entry.get('mimeType') != 'application/vnd.google-apps.folder':
                 continue
@@ -310,8 +306,27 @@ async def sync_root_folder_contents(folder_type: str, root_folder_id: str, servi
             entry_name = entry['name']
             entry_id = entry['id']
 
-            if entry_name not in [folder_type, f"{folder_type}s"]:
+            # datasetsフォルダのみを処理
+            if entry_name == 'datasets':
+                logger.info(f"datasetsフォルダ発見: {entry_id}")
+                nested_results = service.files().list(
+                    q=f"'{entry_id}' in parents and trashed=false",
+                    pageSize=100,
+                    fields="files(id, name, mimeType, parents)"
+                ).execute()
+                nested_items = nested_results.get('files', [])
+                logger.info(f"datasetsフォルダ内のアイテム数: {len(nested_items)}")
+                dataset_files_count = await process_datasets_folder(nested_items, service)
+                files_processed += dataset_files_count
+                break
+    elif folder_type == "dataset":
+        # 指定タイプのみ処理
+        for entry in child_entries:
+            if entry.get('mimeType') != 'application/vnd.google-apps.folder':
                 continue
+
+            entry_name = entry['name']
+            entry_id = entry['id']
 
             if entry_name == 'datasets':
                 nested_results = service.files().list(
@@ -376,11 +391,12 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
             
             # 既存データセット確認
             existing_dataset = dataset_repo.find_by_name(dataset_name)
-            
+
             dataset_file_list = []
             total_size = 0
-            
-            # ファイルを処理
+            file_analyses = {}  # ファイルID -> 解析結果のマッピング
+
+            # ファイル情報を収集
             for file in dataset_files:
                 if file.get('mimeType') != 'application/vnd.google-apps.folder':
                     file_info = {
@@ -400,51 +416,7 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                     if extension in ['csv', 'json', 'jsonl']:
                         logger.info(f"データセットファイル解析開始: {file_info['name']}")
                         file_analysis = await analyze_dataset_file(file_info['id'], file_info['name'], extension, service)
-
-                        # DatasetFileレコードを作成または更新
-                        if existing_dataset:
-                            file_path = f"gdrive://dataset/{dataset_name}/{file_info['id']}"
-                            existing_file = dataset_file_repo.find_by_path(file_path)
-
-                            if existing_file:
-                                # 既存ファイルの更新
-                                needs_file_update = False
-
-                                if file_analysis['schema_info']:
-                                    # スキーマ情報を更新（完全置換ではなくマージする場合はロジックを変更）
-                                    existing_file.schema_info = file_analysis['schema_info']
-                                    existing_file.summary = file_analysis['summary']
-                                    needs_file_update = True
-
-                                # drive_urlが無い場合は追加
-                                if not existing_file.drive_url:
-                                    drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
-                                    existing_file.drive_url = drive_url
-                                    existing_file.drive_file_id = file_info['id']
-                                    needs_file_update = True
-                                    logger.info(f"drive_url を設定: {file_info['name']}")
-
-                                if needs_file_update:
-                                    dataset_file_repo.update(existing_file)
-                                    logger.info(f"データセットファイル情報更新: {file_info['name']}")
-                            else:
-                                # Google Drive URL を生成
-                                drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
-
-                                # 新規ファイル登録
-                                dataset_file = DatasetFile(
-                                    dataset_id=existing_dataset.id,
-                                    file_path=file_path,
-                                    file_name=file_info['name'],
-                                    file_type=extension,
-                                    file_size=file_info['size'],
-                                    schema_info=file_analysis['schema_info'],
-                                    summary=file_analysis['summary'],
-                                    drive_file_id=file_info['id'],
-                                    drive_url=drive_url
-                                )
-                                dataset_file_repo.create(dataset_file)
-                                logger.info(f"データセットファイル登録: {file_info['name']}")
+                        file_analyses[file_info['id']] = file_analysis
             
             if dataset_file_list:
                 # データセット解説を生成
@@ -501,7 +473,55 @@ async def process_datasets_folder(dataset_items: List[Dict[str, Any]], service) 
                     )
                     dataset_repo.create(new_dataset)
                     logger.info(f"データセット新規作成: {dataset_name} ({len(dataset_file_list)}ファイル)")
-    
+
+                    # 新規作成後、existing_datasetを設定
+                    existing_dataset = dataset_repo.find_by_name(dataset_name)
+
+                # データセット作成/更新後、全ファイルをDatasetFileテーブルに登録
+                if existing_dataset:
+                    for file_info in dataset_file_list:
+                        file_path = f"gdrive://dataset/{dataset_name}/{file_info['id']}"
+                        existing_file = dataset_file_repo.find_by_path(file_path)
+
+                        extension = file_info['name'].split('.')[-1].lower() if '.' in file_info['name'] else ''
+                        drive_url = f"https://drive.google.com/file/d/{file_info['id']}/view"
+
+                        # 解析結果を取得（存在する場合）
+                        file_analysis = file_analyses.get(file_info['id'], {'schema_info': None, 'summary': None})
+
+                        if existing_file:
+                            # 既存ファイルの更新
+                            needs_file_update = False
+
+                            if file_analysis['schema_info']:
+                                existing_file.schema_info = file_analysis['schema_info']
+                                existing_file.summary = file_analysis['summary']
+                                needs_file_update = True
+
+                            if not existing_file.drive_url:
+                                existing_file.drive_url = drive_url
+                                existing_file.drive_file_id = file_info['id']
+                                needs_file_update = True
+
+                            if needs_file_update:
+                                dataset_file_repo.update(existing_file)
+                                logger.info(f"データセットファイル情報更新: {file_info['name']}")
+                        else:
+                            # 新規ファイル登録
+                            dataset_file = DatasetFile(
+                                dataset_id=existing_dataset.id,
+                                file_path=file_path,
+                                file_name=file_info['name'],
+                                file_type=extension,
+                                file_size=file_info['size'],
+                                schema_info=file_analysis['schema_info'],
+                                summary=file_analysis['summary'],
+                                drive_file_id=file_info['id'],
+                                drive_url=drive_url
+                            )
+                            dataset_file_repo.create(dataset_file)
+                            logger.info(f"データセットファイル登録: {file_info['name']}")
+
     return files_processed
 
 async def analyze_dataset_file(file_id: str, file_name: str, file_type: str, service) -> Dict[str, Any]:
