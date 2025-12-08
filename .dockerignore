@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation (ビルド時は不要)
+*.md
+docs/
+
+# Tests
+tests/
+*.coverage
+.pytest_cache/
+
+# 機密情報（.envは含めない）
+.env
+credentials/
+*.json
+
+# データベース（ローカル開発用）
+agent/database/*.db
+agent/database/*.db-*
+
+# ベクトルDB
+vector_db/
+
+# ログ
+*.log
+
+# Claude Code
+CLAUDE.md
+claude.md

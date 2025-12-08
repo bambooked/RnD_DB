@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: research-data-management
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # データの永続化
+      - ./data:/app/data
+      - ./agent/database:/app/agent/database
+    environment:
+      # デフォルト設定（.envで上書き可能）
+      - LOG_LEVEL=INFO
+      - DATABASE_PATH=agent/database/research_data.db
+      - DATA_DIR_PATH=data
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      # Google Drive連携は無効化（デモ用）
+      - ENABLE_GOOGLE_DRIVE=false
+      # ベクトル検索も無効化（軽量化）
+      - ENABLE_VECTOR_SEARCH=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

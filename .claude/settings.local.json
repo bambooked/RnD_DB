@@ -8,7 +8,18 @@
       "Bash(sqlite3:*)",
       "Bash(python3 -c \"import sys; sys.path.insert(0, ''/Users/take/others/geeksai/RnDDB/script''); from agent.source.ui.interface import UserInterface; print(''Import successful!'')\")",
       "Bash(python3:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(docker:*)",
+      "Bash(docker-compose:*)",
+      "Bash(chmod:*)",
+      "Bash(find:*)",
+      "Bash(while read hash)",
+      "Bash(do git show $hash --stat)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(git log:*)",
+      "Bash(git verify-pack:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

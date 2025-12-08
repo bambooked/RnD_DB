@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 data/
+!sample_data/
 credentials/
 vector_db/
 database/
