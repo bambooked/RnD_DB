@@ -12,8 +12,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 from ..database.new_repository import DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
-from ..analyzer.openrouter_client import OpenRouterClient
+from ..analyzer.llm_factory import LLMFactory
 from ..interfaces.vector_service import get_vector_search_service
+from tools.config import LLM_PROVIDER, OPENROUTER_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,16 @@ class EnhancedResearchAdvisor:
         self.paper_repo = PaperRepository()
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
-        self.llm_client = OpenRouterClient(model=model)
+
+        # LLMクライアントをファクトリーで生成
+        self.llm_client = LLMFactory.create_from_config(
+            provider=LLM_PROVIDER,
+            openrouter_api_key=OPENROUTER_API_KEY,
+            openai_api_key=OPENAI_API_KEY,
+            gemini_api_key=GEMINI_API_KEY,
+            model=model,
+        )
+
         self.vector_service = get_vector_search_service()
 
         # 会話履歴管理
@@ -38,7 +48,13 @@ class EnhancedResearchAdvisor:
 
         # モデルが指定されている場合、一時的にLLMクライアントを更新
         if model:
-            self.llm_client = OpenRouterClient(model=model)
+            self.llm_client = LLMFactory.create_from_config(
+                provider=LLM_PROVIDER,
+                openrouter_api_key=OPENROUTER_API_KEY,
+                openai_api_key=OPENAI_API_KEY,
+                gemini_api_key=GEMINI_API_KEY,
+                model=model,
+            )
 
         # 相談タイプに応じて処理を分岐
         if consultation_type == "database":

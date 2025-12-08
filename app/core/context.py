@@ -14,7 +14,7 @@ from google.oauth2.credentials import Credentials
 
 from agent.source.advisor.dataset_advisor import DatasetAdvisor
 from agent.source.advisor.enhanced_research_advisor import EnhancedResearchAdvisor
-from agent.source.analyzer.openrouter_client import OpenRouterClient
+from agent.source.analyzer.llm_factory import LLMFactory
 from agent.source.database.new_repository import (
     DatasetFileRepository,
     DatasetRepository,
@@ -28,6 +28,15 @@ from agent.source.integrations.auth import AuthenticationManager
 from agent.source.integrations.looker_export import LookerDataExporter
 from agent.source.integrations.openrouter_sync import OpenRouterModelSync
 from agent.source.interfaces.vector_service import get_vector_search_service
+from tools.config import (
+    LLM_PROVIDER,
+    OPENROUTER_API_KEY,
+    OPENAI_API_KEY,
+    GEMINI_API_KEY,
+    OPENROUTER_MODEL,
+    OPENAI_MODEL,
+    GEMINI_MODEL,
+)
 
 load_dotenv()
 
@@ -51,7 +60,29 @@ auth_manager = AuthenticationManager()
 enhanced_advisor = EnhancedResearchAdvisor()
 dataset_advisor = DatasetAdvisor()
 looker_exporter = LookerDataExporter(google_drive) if google_drive else None
-llm_client = OpenRouterClient()
+
+# LLMクライアントをファクトリーで生成
+if LLM_PROVIDER == "openrouter":
+    model = OPENROUTER_MODEL
+    api_key = OPENROUTER_API_KEY
+elif LLM_PROVIDER == "openai":
+    model = OPENAI_MODEL
+    api_key = OPENAI_API_KEY
+elif LLM_PROVIDER == "gemini":
+    model = GEMINI_MODEL
+    api_key = GEMINI_API_KEY
+else:
+    raise ValueError(f"未対応のLLMプロバイダー: {LLM_PROVIDER}")
+
+llm_client = LLMFactory.create_from_config(
+    provider=LLM_PROVIDER,
+    openrouter_api_key=OPENROUTER_API_KEY,
+    openai_api_key=OPENAI_API_KEY,
+    gemini_api_key=GEMINI_API_KEY,
+    model=model,
+)
+logger.info("LLMクライアント初期化完了: プロバイダー=%s, モデル=%s", LLM_PROVIDER, model)
+
 model_sync = OpenRouterModelSync()
 
 vector_engine = get_vector_search_service()

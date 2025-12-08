@@ -1,3 +1,8 @@
+"""Google Gemini APIクライアント実装
+
+Google Gemini 2.0等のモデルを利用するためのクライアント実装。
+"""
+
 import json
 import logging
 import time
@@ -6,131 +11,88 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from agent.source.analyzer.llm_interface import LLMClientInterface
-from tools.config import (
-    OPENROUTER_API_BASE,
-    OPENROUTER_API_KEY,
-    OPENROUTER_MODEL,
-    OPENROUTER_REFERER,
-    OPENROUTER_TITLE,
-)
 from services.admin_metrics import admin_metrics
 
 logger = logging.getLogger(__name__)
 
 
-class OpenRouterClient(LLMClientInterface):
-    """OpenRouter Chat Completions クライアント"""
+class GeminiClient(LLMClientInterface):
+    """Google Gemini API クライアント"""
 
-    def __init__(self, model: Optional[str] = None):
-        if not OPENROUTER_API_KEY:
-            raise ValueError("OPENROUTER_API_KEY が設定されていません")
+    def __init__(self, api_key: str, model: str = "gemini-2.0-flash-exp"):
+        if not api_key:
+            raise ValueError("Gemini API Key が設定されていません")
 
-        self.model = model or OPENROUTER_MODEL
-        if not self.model:
-            raise ValueError("OPENROUTER_MODEL が設定されていません")
-
+        self.api_key = api_key
+        self.model = model
         self.session = requests.Session()
-        base_url = (OPENROUTER_API_BASE or "https://openrouter.ai/api/v1").rstrip("/")
-        self.endpoint = f"{base_url}/chat/completions"
-        self.headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        if OPENROUTER_REFERER:
-            self.headers["HTTP-Referer"] = OPENROUTER_REFERER
-        if OPENROUTER_TITLE:
-            self.headers["X-Title"] = OPENROUTER_TITLE
+        # Gemini APIのエンドポイント
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
 
-        logger.info("OpenRouter クライアント初期化完了: モデル=%s", self.model)
-
-    @staticmethod
-    def _build_messages(prompt: str, system: Optional[str] = None) -> List[Dict[str, str]]:
-        messages: List[Dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-        return messages
-
-    @staticmethod
-    def _extract_text(data: Dict[str, Any]) -> Optional[str]:
-        choices = data.get("choices") or []
-        if not choices:
-            return None
-
-        message = choices[0].get("message") or {}
-        content = message.get("content")
-
-        if isinstance(content, str):
-            return content
-
-        if isinstance(content, list):
-            parts: List[str] = []
-            for part in content:
-                if isinstance(part, str):
-                    parts.append(part)
-                    continue
-                if isinstance(part, dict):
-                    if "text" in part and isinstance(part["text"], str):
-                        parts.append(part["text"])
-                    elif part.get("type") in {"text", "output_text"} and isinstance(part.get("content"), str):
-                        parts.append(part["content"])
-            if parts:
-                return "".join(parts)
-
-        return None
+        logger.info("Gemini クライアント初期化完了: モデル=%s", self.model)
 
     def _make_request(
         self,
-        messages: List[Dict[str, str]],
+        prompt: str,
         *,
-        model: Optional[str] = None,
         temperature: float = 0.7,
         top_p: float = 0.95,
         max_tokens: Optional[int] = None,
-        response_format: Optional[Dict[str, Any]] = None,
         retry_count: int = 3,
     ) -> Optional[str]:
+        """Gemini APIリクエスト実行"""
         last_error: Optional[Exception] = None
+
+        # エンドポイント構築
+        endpoint = f"{self.base_url}/{self.model}:generateContent?key={self.api_key}"
+
         for attempt in range(retry_count):
             payload: Dict[str, Any] = {
-                "model": model or self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "top_p": top_p,
+                "contents": [{
+                    "parts": [{"text": prompt}]
+                }],
+                "generationConfig": {
+                    "temperature": temperature,
+                    "topP": top_p,
+                }
             }
             if max_tokens is not None:
-                payload["max_tokens"] = max_tokens
-            if response_format is not None:
-                payload["response_format"] = response_format
+                payload["generationConfig"]["maxOutputTokens"] = max_tokens
 
             try:
                 response = self.session.post(
-                    self.endpoint,
-                    headers=self.headers,
+                    endpoint,
+                    headers={"Content-Type": "application/json"},
                     json=payload,
                     timeout=90,
                 )
                 response.raise_for_status()
                 data = response.json()
-                usage = data.get("usage") if isinstance(data, dict) else None
-                if usage:
+
+                # レスポンスからテキスト抽出
+                text = self._extract_text(data)
+                if text:
+                    # 使用量記録（Geminiの場合は概算）
                     try:
+                        estimated_prompt_tokens = len(prompt.split()) * 1.3  # 概算
+                        estimated_completion_tokens = len(text.split()) * 1.3  # 概算
                         admin_metrics.record_llm_usage(
-                            model=payload.get("model", self.model),
-                            prompt_tokens=int(usage.get("prompt_tokens", 0) or 0),
-                            completion_tokens=int(usage.get("completion_tokens", 0) or 0),
-                            total_tokens=int(usage.get("total_tokens", 0) or 0),
+                            model=self.model,
+                            prompt_tokens=int(estimated_prompt_tokens),
+                            completion_tokens=int(estimated_completion_tokens),
+                            total_tokens=int(estimated_prompt_tokens + estimated_completion_tokens),
                         )
                     except Exception as metrics_error:  # pylint: disable=broad-except
                         logger.warning("LLM使用量記録に失敗: %s", metrics_error)
-                text = self._extract_text(data)
-                if text:
+
                     return text.strip()
-                logger.warning("OpenRouter API: 空のレスポンスが返されました")
+
+                logger.warning("Gemini API: 空のレスポンスが返されました")
+
             except requests.RequestException as exc:
                 last_error = exc
                 logger.error(
-                    "OpenRouter API リクエストエラー (試行 %s/%s): %s",
+                    "Gemini API リクエストエラー (試行 %s/%s): %s",
                     attempt + 1,
                     retry_count,
                     exc,
@@ -138,7 +100,7 @@ class OpenRouterClient(LLMClientInterface):
             except ValueError as exc:
                 last_error = exc
                 logger.error(
-                    "OpenRouter API レスポンス解析エラー (試行 %s/%s): %s",
+                    "Gemini API レスポンス解析エラー (試行 %s/%s): %s",
                     attempt + 1,
                     retry_count,
                     exc,
@@ -151,11 +113,104 @@ class OpenRouterClient(LLMClientInterface):
             raise last_error
         return None
 
+    @staticmethod
+    def _extract_text(data: Dict[str, Any]) -> Optional[str]:
+        """Gemini APIレスポンスからテキストを抽出"""
+        try:
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return None
+
+            content = candidates[0].get("content", {})
+            parts = content.get("parts", [])
+            if not parts:
+                return None
+
+            text = parts[0].get("text", "")
+            return text if text else None
+
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.error("レスポンス解析エラー: %s", exc)
+            return None
+
+    def generate_response(
+        self,
+        prompt: str,
+        retry_count: int = 3,
+        *,
+        temperature: float = 0.7,
+        top_p: float = 0.95,
+        max_tokens: int = 1024,
+    ) -> str:
+        """汎用テキスト応答生成"""
+        text = self._make_request(
+            prompt,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            retry_count=retry_count,
+        )
+        if not text:
+            raise RuntimeError("Gemini APIから有効なレスポンスが得られませんでした")
+        return text
+
+    def analyze_text(
+        self,
+        text: str,
+        prompt_template: str,
+        retry_count: int = 3,
+        **format_kwargs: Any,
+    ) -> Optional[Dict[str, Any]]:
+        """テキストを解析してJSONを取得"""
+        format_values: Dict[str, Any] = {"text": text}
+        format_values.update(format_kwargs)
+
+        try:
+            prompt = prompt_template.format(**format_values)
+        except KeyError:
+            prompt = prompt_template
+
+        # JSON形式を強制するためのプロンプト追加
+        prompt += "\n\n必ず有効なJSON形式で返してください。"
+
+        try:
+            response_text = self._make_request(
+                prompt,
+                temperature=0.7,
+                top_p=0.95,
+                max_tokens=8192,
+                retry_count=retry_count,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("テキスト解析エラー: %s", exc)
+            return None
+
+        if not response_text:
+            logger.warning("空のレスポンスが返されました")
+            return None
+
+        # JSONパース
+        cleaned = response_text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip().replace("\r\n", "\n")
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            logger.error("JSONパースエラー: %s", exc)
+            logger.debug("レスポンス内容: %s", cleaned[:500])
+            return None
+
     def generate_research_advice_enhanced(self, prompt: str, retry_count: int = 3) -> Optional[str]:
         """拡張研究アドバイス生成"""
         try:
             text = self._make_request(
-                self._build_messages(prompt),
+                prompt,
                 temperature=0.8,
                 top_p=0.95,
                 max_tokens=4096,
@@ -199,7 +254,7 @@ class OpenRouterClient(LLMClientInterface):
 
         try:
             text = self._make_request(
-                self._build_messages(prompt),
+                prompt,
                 temperature=0.7,
                 top_p=0.95,
                 max_tokens=1024,
@@ -240,7 +295,7 @@ class OpenRouterClient(LLMClientInterface):
 
         try:
             text = self._make_request(
-                self._build_messages(prompt),
+                prompt,
                 temperature=0.7,
                 top_p=0.95,
                 max_tokens=3072,
@@ -251,92 +306,6 @@ class OpenRouterClient(LLMClientInterface):
                 return text
         except Exception as exc:  # pylint: disable=broad-except
             logger.error("データセット文脈解説生成エラー: %s", exc)
-        return None
-
-    def generate_response(
-        self,
-        prompt: str,
-        retry_count: int = 3,
-        *,
-        temperature: float = 0.7,
-        top_p: float = 0.95,
-        max_tokens: int = 1024,
-    ) -> str:
-        """汎用テキスト応答生成"""
-        text = self._make_request(
-            self._build_messages(prompt),
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens,
-            retry_count=retry_count,
-        )
-        if not text:
-            raise RuntimeError("OpenRouter APIから有効なレスポンスが得られませんでした")
-        return text
-
-    def analyze_text(
-        self,
-        text: str,
-        prompt_template: str,
-        retry_count: int = 3,
-        **format_kwargs: Any,
-    ) -> Optional[Dict[str, Any]]:
-        """テキストを解析してJSONを取得"""
-        format_values: Dict[str, Any] = {"text": text}
-        format_values.update(format_kwargs)
-
-        try:
-            prompt = prompt_template.format(**format_values)
-        except KeyError:
-            # 既に整形済みのテンプレートを想定
-            prompt = prompt_template
-
-        try:
-            response_text = self._make_request(
-                self._build_messages(prompt),
-                temperature=0.7,
-                top_p=0.95,
-                max_tokens=8192,
-                response_format={"type": "json_object"},
-                retry_count=retry_count,
-            )
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("テキスト解析エラー: %s", exc)
-            return None
-
-        if not response_text:
-            logger.warning("空のレスポンスが返されました")
-            return None
-
-        cleaned = response_text.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[7:]
-        elif cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-        cleaned = cleaned.strip().replace("\r\n", "\n")
-
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError as exc:
-            logger.error("JSONパースエラー: %s", exc)
-            logger.debug("レスポンス内容: %s", cleaned[:500])
-            return None
-
-    def analyze_file_content(
-        self,
-        file_path: str,
-        file_content: str,
-        file_type: str,
-    ) -> Optional[Dict[str, Any]]:
-        """ファイル内容を解析"""
-        if file_type == "pdf":
-            return self._analyze_pdf_content(file_content)
-        if file_type in ["csv", "json", "jsonl"]:
-            return self._analyze_data_content(file_content, file_type)
-
-        logger.warning("未対応のファイルタイプ: %s", file_type)
         return None
 
     def analyze_paper_metadata(self, file_name: str, content: str) -> Optional[Dict[str, Any]]:
@@ -376,6 +345,21 @@ PDF内容（最初の部分）:
         if result is not None:
             logger.info("論文メタデータ解析成功: %s", file_name)
         return result
+
+    def analyze_file_content(
+        self,
+        file_path: str,
+        file_content: str,
+        file_type: str,
+    ) -> Optional[Dict[str, Any]]:
+        """ファイル内容を解析"""
+        if file_type == "pdf":
+            return self._analyze_pdf_content(file_content)
+        if file_type in ["csv", "json", "jsonl"]:
+            return self._analyze_data_content(file_content, file_type)
+
+        logger.warning("未対応のファイルタイプ: %s", file_type)
+        return None
 
     def _analyze_pdf_content(self, content: str) -> Optional[Dict[str, Any]]:
         """PDF文書を解析"""

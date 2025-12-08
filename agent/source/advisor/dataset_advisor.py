@@ -8,7 +8,8 @@ import logging
 from datetime import datetime
 
 from ..database.new_repository import DatasetRepository, DatasetFileRepository
-from ..analyzer.openrouter_client import OpenRouterClient
+from ..analyzer.llm_factory import LLMFactory
+from tools.config import LLM_PROVIDER, OPENROUTER_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,14 @@ class DatasetAdvisor:
     def __init__(self):
         self.dataset_repo = DatasetRepository()
         self.dataset_file_repo = DatasetFileRepository()
-        self.llm_client = OpenRouterClient()
+
+        # LLMクライアントをファクトリーで生成
+        self.llm_client = LLMFactory.create_from_config(
+            provider=LLM_PROVIDER,
+            openrouter_api_key=OPENROUTER_API_KEY,
+            openai_api_key=OPENAI_API_KEY,
+            gemini_api_key=GEMINI_API_KEY,
+        )
     
     def explain_dataset(self, dataset_name: str, user_question: str = "") -> Dict[str, Any]:
         """データセットの詳細解説"""
