@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}検索 | R&D DB{% endblock %}
+
+{% block content %}
+    <section class="bg-slate-800 text-white">
+        <div class="max-w-6xl mx-auto px-4 py-12 space-y-6">
+            <div class="space-y-2">
+                <h1 class="text-3xl font-bold">研究データ検索</h1>
+                <p class="text-slate-200">論文・ポスター・データセットを横断検索し、詳細情報やGoogle Drive上のファイルにアクセスできます。</p>
+            </div>
+            <div class="bg-white/10 border border-white/20 rounded-xl p-6 backdrop-blur">
+                <div class="flex flex-col gap-4 md:flex-row md:items-center">
+                    <div class="flex-1">
+                        <label for="search-query" class="sr-only">検索キーワード</label>
+                        <input id="search-query"
+                               type="search"
+                               class="w-full px-4 py-3 rounded-lg border border-white/10 bg-white/20 placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                               placeholder="キーワードで検索...">
+                    </div>
+                    <div>
+                        <label for="search-type" class="sr-only">検索対象</label>
+                        <select id="search-type" class="px-4 py-3 rounded-lg border border-white/10 bg-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-300">
+                            <option value="all">すべて</option>
+                            <option value="papers">論文</option>
+                            <option value="posters">ポスター</option>
+                            <option value="datasets">データセット</option>
+                        </select>
+                    </div>
+                    <button id="search-button"
+                            type="button"
+                            class="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-emerald-500 text-white font-medium hover:bg-emerald-600 transition-colors">
+                        <i class="fas fa-search"></i>
+                        検索
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <main class="max-w-6xl mx-auto px-4 py-10">
+        <div id="search-results" class="space-y-3 bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+            <p class="text-slate-500">検索キーワードを入力し、検索ボタンを押してください。</p>
+        </div>
+    </main>
+
+    <!-- データセット詳細モーダル -->
+    <div id="dataset-detail-modal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-slate-800">データセットの詳細</h3>
+                        <p class="text-sm text-slate-500">ファイル構成や要約、参照関係を確認できます。</p>
+                    </div>
+                </div>
+                <button id="close-dataset-modal" type="button" class="text-slate-400 hover:text-slate-600 text-xl">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="overflow-y-auto px-6 py-6 space-y-6">
+                <section class="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                    <div>
+                        <div class="flex flex-col gap-4">
+                            <div>
+                                <h4 class="text-sm font-semibold text-slate-600 mb-1">データセット名</h4>
+                                <p class="text-lg font-bold text-slate-800" id="dataset-name">-</p>
+                            </div>
+                            <div class="flex gap-6 text-sm text-slate-600">
+                                <div>
+                                    <span class="text-2xl font-bold text-purple-600" id="dataset-file-count">0</span>
+                                    <span class="ml-1">ファイル</span>
+                                </div>
+                                <div>
+                                    <span class="text-2xl font-bold text-blue-600" id="dataset-total-size">0</span>
+                                    <span class="ml-1">MB</span>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-semibold text-slate-600 mb-1">説明</h4>
+                                <p class="text-slate-700" id="dataset-description">-</p>
+                            </div>
+                            <div id="dataset-summary-section" class="hidden">
+                                <h4 class="text-sm font-semibold text-slate-600 mb-1">要約</h4>
+                                <p class="text-slate-700" id="dataset-summary">-</p>
+                            </div>
+                            <div id="dataset-drive-link-section" class="hidden">
+                                <a id="dataset-drive-link" href="#" target="_blank" class="inline-flex items-center text-emerald-600 hover:text-emerald-700 text-sm">
+                                    <i class="fab fa-google-drive mr-2"></i>
+                                    Google Driveで開く
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                        <h4 class="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
+                            <i class="fas fa-info-circle text-emerald-500"></i>
+                            メタ情報
+                        </h4>
+                        <dl class="space-y-2 text-sm text-slate-600" id="dataset-meta">
+                            <div class="flex items-center justify-between">
+                                <dt class="text-slate-500">最終更新</dt>
+                                <dd id="dataset-updated">-</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </section>
+
+                <section>
+                    <h4 class="text-lg font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-folder-open text-purple-500"></i>
+                        ファイル一覧
+                    </h4>
+                    <div id="dataset-files-list" class="space-y-2">
+                        <p class="text-sm text-slate-500">ファイル情報を読み込んでいます...</p>
+                    </div>
+                </section>
+
+                <section id="data-preview-section" class="hidden space-y-4">
+                    <div class="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h4 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                                    <i class="fas fa-table text-blue-500"></i>
+                                    データプレビュー
+                                </h4>
+                                <p class="text-sm text-slate-500 mt-1">最大100行までのサンプルを表示します。</p>
+                            </div>
+                            <span id="preview-file-name" class="text-sm text-blue-700 font-medium">-</span>
+                        </div>
+                    </div>
+
+                    <div id="dataset-stats-summary" class="hidden px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600">
+                        <i class="fas fa-chart-line text-emerald-500 mr-2"></i>
+                        <span id="stats-summary-text"></span>
+                    </div>
+
+                    <div class="overflow-x-auto bg-white border border-slate-200 rounded-lg">
+                        <div id="preview-loading" class="p-8 text-center text-slate-500">
+                            <i class="fas fa-spinner fa-spin text-2xl mb-3"></i>
+                            <p>データを読み込んでいます...</p>
+                        </div>
+                        <div id="preview-table-container" class="hidden">
+                            <table id="preview-table" class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50"></thead>
+                                <tbody id="preview-table-body" class="bg-white divide-y divide-slate-100"></tbody>
+                            </table>
+                            <div class="px-4 py-2 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 text-center">
+                                <span id="preview-row-count">0</span> 行を表示中（最大100行）
+                            </div>
+                        </div>
+                        <div id="preview-error" class="hidden p-8 text-center text-red-500">
+                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                            <p>データの読み込みに失敗しました</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="citing-docs-section" class="hidden">
+                    <h4 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                        <i class="fas fa-link text-emerald-500"></i>
+                        このデータセットを引用している文献
+                    </h4>
+                    <div id="citing-papers-section" class="hidden mb-4">
+                        <h5 class="text-sm font-semibold text-slate-600 mb-2">論文</h5>
+                        <div id="citing-papers-list" class="space-y-2"></div>
+                    </div>
+                    <div id="citing-posters-section" class="hidden">
+                        <h5 class="text-sm font-semibold text-slate-600 mb-2">ポスター</h5>
+                        <div id="citing-posters-list" class="space-y-2"></div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/js/search.js"></script>
+{% endblock %}

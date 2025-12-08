@@ -12,8 +12,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 from ..database.new_repository import DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
-from ..analyzer.openrouter_client import OpenRouterClient
-from ..integrations.vector_search import VectorSearchEngine
+from ..analyzer.llm_factory import LLMFactory
+from ..interfaces.vector_service import get_vector_search_service
+from tools.config import LLM_PROVIDER, OPENROUTER_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +27,34 @@ class EnhancedResearchAdvisor:
         self.paper_repo = PaperRepository()
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
-        self.llm_client = OpenRouterClient(model=model)
-        self.vector_engine = VectorSearchEngine()
+
+        # LLMクライアントをファクトリーで生成
+        self.llm_client = LLMFactory.create_from_config(
+            provider=LLM_PROVIDER,
+            openrouter_api_key=OPENROUTER_API_KEY,
+            openai_api_key=OPENAI_API_KEY,
+            gemini_api_key=GEMINI_API_KEY,
+            model=model,
+        )
+
+        self.vector_service = get_vector_search_service()
 
         # 会話履歴管理
         self.conversation_history: List[Dict[str, Any]] = []
 
-    def research_consultation(self, user_query: str, consultation_type: str = "general", model: Optional[str] = None) -> Dict[str, Any]:
+    async def research_consultation(self, user_query: str, consultation_type: str = "general", model: Optional[str] = None) -> Dict[str, Any]:
         """Web API用の研究相談メソッド"""
         logger.info(f"研究相談開始: {user_query} (タイプ: {consultation_type}, モデル: {model or 'デフォルト'})")
 
         # モデルが指定されている場合、一時的にLLMクライアントを更新
         if model:
-            self.llm_client = OpenRouterClient(model=model)
+            self.llm_client = LLMFactory.create_from_config(
+                provider=LLM_PROVIDER,
+                openrouter_api_key=OPENROUTER_API_KEY,
+                openai_api_key=OPENAI_API_KEY,
+                gemini_api_key=GEMINI_API_KEY,
+                model=model,
+            )
 
         # 相談タイプに応じて処理を分岐
         if consultation_type == "database":
@@ -46,9 +62,9 @@ class EnhancedResearchAdvisor:
         elif consultation_type == "planning":
             return self._handle_planning_query(user_query)
         else:
-            return self._handle_general_query(user_query)
+            return await self._handle_general_query(user_query)
     
-    def start_database_consultation(self, user_query: str) -> Dict[str, Any]:
+    async def start_database_consultation(self, user_query: str) -> Dict[str, Any]:
         """データベース検索・相談を開始"""
         logger.info(f"データベース検索・相談開始: {user_query}")
         
@@ -56,9 +72,9 @@ class EnhancedResearchAdvisor:
         self.conversation_history = []
         
         # 初期アドバイスを生成
-        return self._process_research_query(user_query, is_initial=True)
+        return await self._process_research_query(user_query, is_initial=True)
     
-    def start_research_chat(self, user_query: str) -> Dict[str, Any]:
+    async def start_research_chat(self, user_query: str) -> Dict[str, Any]:
         """研究相談チャットを開始"""
         logger.info(f"研究相談チャット開始: {user_query}")
         
@@ -66,13 +82,13 @@ class EnhancedResearchAdvisor:
         self.conversation_history = []
         
         # 初期アドバイスを生成
-        return self._process_research_query(user_query, is_initial=True)
+        return await self._process_research_query(user_query, is_initial=True)
     
-    def continue_research_chat(self, user_query: str) -> Dict[str, Any]:
+    async def continue_research_chat(self, user_query: str) -> Dict[str, Any]:
         """研究相談チャットを継続"""
         logger.info(f"研究相談チャット継続: {user_query}")
         
-        return self._process_research_query(user_query, is_initial=False)
+        return await self._process_research_query(user_query, is_initial=False)
     
     def _handle_database_query(self, user_query: str) -> Dict[str, Any]:
         """データベースクエリの処理 - LLMを使用した動的応答"""
@@ -121,6 +137,7 @@ class EnhancedResearchAdvisor:
         relevant_datasets = []
         for ds in datasets:
             relevant_datasets.append({
+                "id": ds.id,  # フロントエンド互換性のためidも追加
                 "dataset_id": ds.id,
                 "name": ds.name,
                 "description": ds.description or "",
@@ -184,6 +201,7 @@ class EnhancedResearchAdvisor:
         relevant_datasets = []
         for ds in datasets:
             relevant_datasets.append({
+                "id": ds.id,  # フロントエンド互換性のためidも追加
                 "dataset_id": ds.id,
                 "name": ds.name,
                 "description": ds.description or "",
@@ -199,7 +217,7 @@ class EnhancedResearchAdvisor:
             "next_actions": ["研究テーマの具体化", "先行研究調査", "データ収集計画", "手法の選定"]
         }
     
-    def _handle_general_query(self, user_query: str) -> Dict[str, Any]:
+    async def _handle_general_query(self, user_query: str) -> Dict[str, Any]:
         """一般的なクエリの処理 - シンプルなLLM応答"""
         # データベース内容を取得
         datasets = self.dataset_repo.find_all()
@@ -210,7 +228,7 @@ class EnhancedResearchAdvisor:
         db_context = self._build_database_context(datasets, papers, posters)
 
         # 関連文書と関連データセットを検索
-        related_documents = self._find_similar_documents_enhanced(user_query, top_k=3)
+        related_documents = await self._find_similar_documents_enhanced(user_query, top_k=3)
         relevant_datasets = self._find_relevant_datasets(user_query)
 
         # 詳細なプロンプト
@@ -267,11 +285,11 @@ class EnhancedResearchAdvisor:
             "next_actions": ["具体的なキーワードで検索", "データセットの詳細確認"]
         }
     
-    def _process_research_query(self, query: str, is_initial: bool = False) -> Dict[str, Any]:
+    async def _process_research_query(self, query: str, is_initial: bool = False) -> Dict[str, Any]:
         """研究クエリを処理"""
         try:
             # 1. 関連文書の検索
-            similar_docs = self._find_similar_documents_enhanced(query)
+            similar_docs = await self._find_similar_documents_enhanced(query)
             
             # 2. データセット関連情報の取得
             relevant_datasets = self._find_relevant_datasets(query)
@@ -313,59 +331,58 @@ class EnhancedResearchAdvisor:
                 "next_actions": ["システム管理者に連絡する"]
             }
     
-    def _find_similar_documents_enhanced(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    async def _find_similar_documents_enhanced(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """拡張された類似文書検索（ベクトル検索優先のハイブリッド）"""
 
         # ベクトル検索が有効な場合は、ベクトル検索を優先
-        if self.vector_engine.is_enabled():
+        if self.vector_service.is_enabled():
             logger.info(f"Using vector search for query: {query}")
             try:
-                vector_results = self.vector_engine.search_similar(
-                    query,
-                    limit=top_k,
-                    threshold=0.5  # セマンティック検索は閾値を下げる
+                vector_results = await self.vector_service.vector_search(
+                    query=query,
+                    top_k=top_k,
+                    similarity_threshold=0.5  # セマンティック検索は閾値を下げる
                 )
 
-                # ベクトル検索結果をメタデータ形式に変換
                 enhanced_results = []
                 for result in vector_results:
-                    metadata = result.get('metadata', {})
-                    doc_type = metadata.get('type', '')
-                    doc_id = metadata.get('id', 0)
+                    category = (result.get('category') or '').lower()
+                    doc_id = result.get('id')
+                    similarity = result.get('relevance_score', result.get('score', 0.0))
 
-                    # データベースから詳細情報を取得
-                    if doc_type == 'paper':
+                    if category == 'paper' and doc_id:
                         paper = self.paper_repo.find_by_id(doc_id)
                         if paper:
                             enhanced_results.append({
                                 "type": "paper",
                                 "id": paper.id,
-                                "title": paper.title,
+                                "title": paper.title or result.get('title'),
                                 "authors": paper.authors,
                                 "abstract": paper.abstract,
                                 "keywords": paper.keywords,
                                 "file_name": paper.file_name,
                                 "file_path": paper.file_path,
                                 "drive_url": paper.drive_url,
-                                "similarity_score": result.get('similarity', 0.0)
+                                "similarity_score": similarity
                             })
-                    elif doc_type == 'poster':
+                            continue
+
+                    if category == 'poster' and doc_id:
                         poster = self.poster_repo.find_by_id(doc_id)
                         if poster:
                             enhanced_results.append({
                                 "type": "poster",
                                 "id": poster.id,
-                                "title": poster.title,
+                                "title": poster.title or result.get('title'),
                                 "authors": poster.authors,
                                 "abstract": poster.abstract,
                                 "keywords": poster.keywords,
                                 "file_name": poster.file_name,
                                 "file_path": poster.file_path,
                                 "drive_url": poster.drive_url,
-                                "similarity_score": result.get('similarity', 0.0)
+                                "similarity_score": similarity
                             })
-                    # dataset は related_documents に含めない（relevant_datasets で別途処理）
-                    # elif doc_type == 'dataset': は削除
+                            continue
 
                 if enhanced_results:
                     logger.info(f"Vector search returned {len(enhanced_results)} results")
@@ -515,6 +532,7 @@ class EnhancedResearchAdvisor:
             # 関連性が高い場合のみ追加（閾値: 5以上 = データセット名一致 or 重要キーワード2つ以上一致）
             if relevance_score >= 5:
                 relevant_datasets.append({
+                    "id": dataset.id,  # フロントエンド互換性のためidも追加
                     "dataset_id": dataset.id,
                     "name": dataset.name,
                     "description": dataset.description,

@@ -11,12 +11,23 @@ BASE_DIR = Path(__file__).parent.parent  # プロジェクトルートに移動
 DATA_DIR = BASE_DIR / os.getenv("DATA_DIR_PATH", "data")
 DATABASE_DIR = BASE_DIR / "agent" / "database"
 
-# OpenRouter API設定（Gemini互換設定からのフォールバックを許可）
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or os.getenv("GEMINI_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL") or os.getenv("GEMINI_MODEL", "openrouter/anthropic/claude-3.5-sonnet")
+# LLMプロバイダー設定
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()
+
+# OpenRouter API設定
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "anthropic/claude-3.5-sonnet")
 OPENROUTER_API_BASE = os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
 OPENROUTER_REFERER = os.getenv("OPENROUTER_REFERER")
 OPENROUTER_TITLE = os.getenv("OPENROUTER_TITLE")
+
+# OpenAI API設定
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+
+# Google Gemini API設定
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
 
 # データベース設定
 DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(DATABASE_DIR / "research_data.db")))
@@ -48,22 +59,32 @@ logging.getLogger('pypdf._reader').setLevel(logging.CRITICAL)
 def validate_config():
     """設定の妥当性を検証"""
     errors = []
-    
-    if not OPENROUTER_API_KEY:
-        errors.append("OPENROUTER_API_KEY（または互換の GEMINI_API_KEY）が設定されていません")
-    
+
+    # LLMプロバイダーに応じたAPIキー確認
+    if LLM_PROVIDER == "openrouter":
+        if not OPENROUTER_API_KEY:
+            errors.append("LLM_PROVIDER=openrouter ですが、OPENROUTER_API_KEY が設定されていません")
+    elif LLM_PROVIDER == "openai":
+        if not OPENAI_API_KEY:
+            errors.append("LLM_PROVIDER=openai ですが、OPENAI_API_KEY が設定されていません")
+    elif LLM_PROVIDER == "gemini":
+        if not GEMINI_API_KEY:
+            errors.append("LLM_PROVIDER=gemini ですが、GEMINI_API_KEY が設定されていません")
+    else:
+        errors.append(f"未対応のLLMプロバイダーです: {LLM_PROVIDER}（openrouter, openai, gemini のいずれかを指定してください）")
+
     if not DATA_DIR.exists():
         errors.append(f"データディレクトリが存在しません: {DATA_DIR}")
-    
+
     # データベースディレクトリが存在しない場合は作成
     DATABASE_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     if errors:
         for error in errors:
             logging.error(error)
         raise ValueError("設定エラーがあります。.envファイルを確認してください。")
-    
-    logging.info("設定の検証が完了しました")
+
+    logging.info("設定の検証が完了しました（LLMプロバイダー: %s）", LLM_PROVIDER)
 
 # カテゴリーマッピング
 CATEGORY_MAPPING = {

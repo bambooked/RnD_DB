@@ -1,0 +1,140 @@
+"""Routes responsible for rendering HTML pages and basic status APIs."""
+
+from fastapi import APIRouter, HTTPException
+from fastapi.requests import Request
+from fastapi.responses import HTMLResponse, JSONResponse
+
+from ..core import (
+    logger,
+    auth_manager,
+    dataset_repo,
+    google_drive,
+    paper_repo,
+    poster_repo,
+    templates,
+    user_credentials,
+)
+from ..services.admin_overview import build_admin_overview
+
+router = APIRouter()
+
+
+def _build_system_status():
+    return {
+        "google_drive": google_drive.is_enabled() if google_drive else False,
+        "auth": auth_manager.is_enabled(),
+        "database": True,
+    }
+
+
+def _build_stats():
+    return {
+        "papers": len(paper_repo.find_all()),
+        "posters": len(poster_repo.find_all()),
+        "datasets": len(dataset_repo.find_all()),
+    }
+
+
+@router.get("/", response_class=HTMLResponse)
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """ダッシュボードページ"""
+    system_status = _build_system_status()
+    stats = _build_stats()
+
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "system_status": system_status,
+            "stats": stats,
+            "current_page": "dashboard",
+        },
+    )
+
+
+@router.get("/chat", response_class=HTMLResponse)
+async def chat(request: Request):
+    """チャットページ"""
+    return templates.TemplateResponse(
+        "chat.html",
+        {
+            "request": request,
+            "system_status": _build_system_status(),
+            "stats": _build_stats(),
+            "current_page": "chat",
+        },
+    )
+
+
+@router.get("/search", response_class=HTMLResponse)
+async def search(request: Request):
+    """検索ページ"""
+    return templates.TemplateResponse(
+        "search.html",
+        {
+            "request": request,
+            "system_status": _build_system_status(),
+            "stats": _build_stats(),
+            "current_page": "search",
+        },
+    )
+
+
+@router.get("/drive-sync", response_class=HTMLResponse)
+async def drive_sync(request: Request):
+    """Google Drive同期ページ"""
+    return templates.TemplateResponse(
+        "drive_sync.html",
+        {
+            "request": request,
+            "system_status": _build_system_status(),
+            "current_page": "drive-sync",
+        },
+    )
+
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_dashboard(request: Request):
+    """設定ダッシュボードページ"""
+    overview = await build_admin_overview()
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "overview": overview,
+            "system_status": _build_system_status(),
+            "current_page": "settings",
+        },
+    )
+
+
+@router.get("/api/status")
+async def get_system_status():
+    """システム状態API"""
+    return JSONResponse(
+        {
+            "google_drive": "default" in user_credentials,
+            "auth": auth_manager.is_enabled(),
+            "database": True,
+            "stats": {
+                "papers": len(paper_repo.find_all()),
+                "posters": len(poster_repo.find_all()),
+                "datasets": len(dataset_repo.find_all()),
+            },
+        }
+    )
+
+
+@router.get("/api/settings/overview")
+async def get_settings_overview():
+    """設定ダッシュボード向け概要情報API"""
+    try:
+        overview = await build_admin_overview()
+        return JSONResponse(overview)
+    except Exception as exc:
+        logger.error("管理者概要情報APIエラー: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+__all__ = ["router"]

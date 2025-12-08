@@ -82,7 +82,7 @@ AI相談チャットで提案されたGoogle Driveのファイル・フォルダ
 
 ### 修正したファイル
 
-#### 1. `templates/index.html`
+#### 1. `templates/chat.html`
 
 **追加HTML（126-136行目）**:
 ```html

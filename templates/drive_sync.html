@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Google Drive同期 | R&D DB{% endblock %}
+
+{% block content %}
+    <section class="bg-gradient-to-r from-blue-900 via-blue-800 to-slate-900 text-white">
+        <div class="max-w-5xl mx-auto px-4 py-12 space-y-6">
+            <div class="space-y-2">
+                <h1 class="text-3xl font-bold">Google Drive同期</h1>
+                <p class="text-blue-100">Drive上のフォルダを選択し、論文・ポスター・データセットを自動で取り込みます。</p>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-3 text-sm text-blue-100">
+                <div class="bg-white/10 border border-white/20 rounded-lg p-4 backdrop-blur">
+                    <p class="font-semibold text-white">ステップ1</p>
+                    <p class="mt-1">Googleアカウントでログインし、同期許可を与えます。</p>
+                </div>
+                <div class="bg-white/10 border border-white/20 rounded-lg p-4 backdrop-blur">
+                    <p class="font-semibold text-white">ステップ2</p>
+                    <p class="mt-1">同期対象のフォルダとデータ種別を選択します。</p>
+                </div>
+                <div class="bg-white/10 border border-white/20 rounded-lg p-4 backdrop-blur">
+                    <p class="font-semibold text-white">ステップ3</p>
+                    <p class="mt-1">同期開始でバックグラウンド処理が走ります。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <main class="max-w-4xl mx-auto px-4 py-10">
+        <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6">
+            <section id="auth-section" class="space-y-4">
+                <div id="not-authenticated" class="space-y-3">
+                    <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p class="text-sm text-blue-800 flex items-start gap-2">
+                            <i class="fas fa-info-circle mt-0.5"></i>
+                            Google Driveに接続するには、まずログインしてください。
+                        </p>
+                    </div>
+                    <button id="google-login-btn" type="button" class="w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 transition-colors text-white font-medium px-4 py-3 rounded-lg">
+                        <i class="fab fa-google"></i>
+                        Googleでログイン
+                    </button>
+                </div>
+
+                <div id="authenticated" class="hidden space-y-6">
+                    <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-start gap-2">
+                        <i class="fas fa-check-circle mt-0.5"></i>
+                        Google Driveに接続済みです。同期対象を設定してください。
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">同期フォルダ</label>
+                            <button id="select-folder-btn" type="button" class="w-full border border-slate-300 rounded-lg px-4 py-3 text-left hover:bg-slate-50 transition-colors flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <i class="fas fa-folder text-slate-500"></i>
+                                    <span id="selected-folder-name">フォルダを選択...</span>
+                                </span>
+                                <i class="fas fa-chevron-down text-xs text-slate-400"></i>
+                            </button>
+                            <input type="hidden" id="selected-folder-ids">
+                        </div>
+
+                        <div id="folder-list" class="hidden border border-slate-200 rounded-lg max-h-72 overflow-y-auto">
+                            <div class="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-10 text-sm text-slate-500">
+                                <span>同期対象フォルダ</span>
+                                <div class="flex items-center gap-3">
+                                    <button type="button" id="select-all-folders" class="text-blue-600 hover:underline">すべて選択</button>
+                                    <span class="text-slate-300">|</span>
+                                    <button type="button" id="clear-all-folders" class="text-slate-600 hover:underline">選択解除</button>
+                                </div>
+                            </div>
+                            <div id="folder-list-content" class="divide-y"></div>
+                        </div>
+
+                        <div>
+                            <label for="sync-folder-type" class="block text-sm font-semibold text-slate-700 mb-2">同期対象</label>
+                            <select id="sync-folder-type" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                                <option value="all">すべて</option>
+                                <option value="papers">論文</option>
+                                <option value="posters">ポスター</option>
+                                <option value="datasets">データセット</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button id="sync-button" type="button" class="w-full inline-flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 transition-colors text-white font-medium px-5 py-3 rounded-lg">
+                        <span id="sync-text">同期開始</span>
+                        <div id="sync-loading" class="loading">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </div>
+                    </button>
+
+                    <div id="sync-result" class="hidden p-4 rounded-lg text-sm"></div>
+                </div>
+            </section>
+
+            <section class="border-t border-slate-200 pt-6">
+                <h2 class="text-base font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                    <i class="fas fa-question-circle text-blue-500"></i>
+                    よくある質問
+                </h2>
+                <dl class="space-y-4 text-sm text-slate-600">
+                    <div>
+                        <dt class="font-semibold text-slate-700">同期はどれくらい時間がかかりますか？</dt>
+                        <dd class="mt-1">フォルダ内のファイル数に依存します。同期はバックグラウンドで行われるため、ページを閉じても問題ありません。</dd>
+                    </div>
+                    <div>
+                        <dt class="font-semibold text-slate-700">フォルダの選択を間違えた場合は？</dt>
+                        <dd class="mt-1">フォルダ選択をやり直して同期を再度実行してください。既存データは重複しないよう管理されています。</dd>
+                    </div>
+                </dl>
+            </section>
+        </div>
+    </main>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/js/drive_sync.js"></script>
+{% endblock %}

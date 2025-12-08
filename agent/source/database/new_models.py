@@ -267,6 +267,7 @@ class OpenRouterModel:
     top_provider: Optional[str] = None
     architecture: Optional[str] = None
     modality: Optional[str] = None
+    visible: bool = True
 
     def to_dict(self) -> dict:
         """辞書形式に変換"""
@@ -282,7 +283,8 @@ class OpenRouterModel:
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "top_provider": self.top_provider,
             "architecture": self.architecture,
-            "modality": self.modality
+            "modality": self.modality,
+            "visible": self.visible
         }
 
     @classmethod
@@ -292,4 +294,7 @@ class OpenRouterModel:
             data["created_at"] = datetime.fromisoformat(data["created_at"])
         if data.get("updated_at"):
             data["updated_at"] = datetime.fromisoformat(data["updated_at"])
+        if "visible" in data:
+            # SQLite stores booleans as integers; normalize to Python bool
+            data["visible"] = bool(data["visible"])
         return cls(**data)

@@ -5,7 +5,10 @@ build/
 dist/
 wheels/
 data/
+!sample_data/
 credentials/
+vector_db/
+database/
 *.egg-info
 
 # Virtual environments

@@ -11,9 +11,10 @@ import pandas as pd
 logging.getLogger('pypdf').setLevel(logging.CRITICAL)
 logging.getLogger('pypdf._cmap').setLevel(logging.CRITICAL)
 
-from .openrouter_client import OpenRouterClient
+from .llm_factory import LLMFactory
 from ..database.models import File, AnalysisResult
 from ..database.repository import FileRepository, AnalysisResultRepository
+from tools.config import LLM_PROVIDER, OPENROUTER_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,13 @@ class FileAnalyzer:
     """ファイル内容を解析するクラス"""
     
     def __init__(self):
-        self.llm_client = OpenRouterClient()
+        # LLMクライアントをファクトリーで生成
+        self.llm_client = LLMFactory.create_from_config(
+            provider=LLM_PROVIDER,
+            openrouter_api_key=OPENROUTER_API_KEY,
+            openai_api_key=OPENAI_API_KEY,
+            gemini_api_key=GEMINI_API_KEY,
+        )
         self.file_repo = FileRepository()
         self.analysis_repo = AnalysisResultRepository()
     

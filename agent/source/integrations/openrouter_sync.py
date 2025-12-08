@@ -165,9 +165,11 @@ class OpenRouterModelSync:
                 "models_synced": 0
             }
 
-    def get_models_from_db(self) -> List[OpenRouterModel]:
+    def get_models_from_db(self, include_hidden: bool = False) -> List[OpenRouterModel]:
         """データベースからモデル一覧を取得"""
-        return self.repo.find_all()
+        if include_hidden:
+            return self.repo.find_all()
+        return self.repo.find_visible()
 
     def sync_if_needed(self) -> Dict[str, Any]:
         """必要に応じてモデル一覧を同期"""

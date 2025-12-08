@@ -3,11 +3,12 @@ import json
 from pathlib import Path
 import logging
 
-from .openrouter_client import OpenRouterClient
+from .llm_factory import LLMFactory
 from .file_analyzer import FileAnalyzer
 from ..database.new_repository import (
     DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
 )
+from tools.config import LLM_PROVIDER, OPENROUTER_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,13 @@ class NewFileAnalyzer:
     """新しいデータベース構造に対応したファイル解析クラス"""
     
     def __init__(self):
-        self.llm_client = OpenRouterClient()
+        # LLMクライアントをファクトリーで生成
+        self.llm_client = LLMFactory.create_from_config(
+            provider=LLM_PROVIDER,
+            openrouter_api_key=OPENROUTER_API_KEY,
+            openai_api_key=OPENAI_API_KEY,
+            gemini_api_key=GEMINI_API_KEY,
+        )
         self.file_analyzer = FileAnalyzer()
         self.dataset_repo = DatasetRepository()
         self.paper_repo = PaperRepository()

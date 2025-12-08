@@ -65,7 +65,7 @@ conn.close()
 # 4. 同期実行
 print("\n4. 同期実行...")
 sync_payload = {
-    "folder_id": folder_id,
+    "folder_ids": [folder_id],
     "folder_type": "all"
 }
 print(f"Folder ID: {folder_id}")

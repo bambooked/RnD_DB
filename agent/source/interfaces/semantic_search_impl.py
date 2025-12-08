@@ -42,11 +42,18 @@ class IntelligentSemanticSearchPort(SemanticSearchPort):
         self._initialize_llm_client()
     
     def _initialize_llm_client(self):
-        """OpenRouterベースのLLMクライアント初期化"""
+        """LLMクライアント初期化（プロバイダ対応）"""
         try:
-            from ..analyzer.openrouter_client import OpenRouterClient
-            self._llm_client = OpenRouterClient()
-            logger.info("Semantic search: OpenRouter client initialized")
+            from ..analyzer.llm_factory import LLMFactory
+            from tools.config import LLM_PROVIDER, OPENROUTER_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+
+            self._llm_client = LLMFactory.create_from_config(
+                provider=LLM_PROVIDER,
+                openrouter_api_key=OPENROUTER_API_KEY,
+                openai_api_key=OPENAI_API_KEY,
+                gemini_api_key=GEMINI_API_KEY,
+            )
+            logger.info(f"Semantic search: LLM client initialized (provider={LLM_PROVIDER})")
         except Exception as e:
             logger.warning(f"LLM client initialization failed: {e}")
             self._llm_client = None

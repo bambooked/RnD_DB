@@ -7,7 +7,8 @@ import numpy as np
 
 from ..database.repository import FileRepository, AnalysisResultRepository
 from ..database.new_repository import DatasetRepository, PaperRepository, PosterRepository, DatasetFileRepository
-from ..analyzer.openrouter_client import OpenRouterClient
+from ..analyzer.llm_factory import LLMFactory
+from tools.config import LLM_PROVIDER, OPENROUTER_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +20,20 @@ class ResearchAdvisor:
         # 旧構造（互換性維持）
         self.file_repo = FileRepository()
         self.analysis_repo = AnalysisResultRepository()
-        
+
         # 新構造（カテゴリー別）
         self.dataset_repo = DatasetRepository()
         self.paper_repo = PaperRepository()
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
-        
-        self.llm_client = OpenRouterClient()
+
+        # LLMクライアントをファクトリーで生成
+        self.llm_client = LLMFactory.create_from_config(
+            provider=LLM_PROVIDER,
+            openrouter_api_key=OPENROUTER_API_KEY,
+            openai_api_key=OPENAI_API_KEY,
+            gemini_api_key=GEMINI_API_KEY,
+        )
     
     def find_similar_documents(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """クエリに類似した文書を検索"""

@@ -35,7 +35,7 @@ class VectorSearchService:
     """
     
     def __init__(self):
-        self.is_enabled = self._is_vector_search_enabled()
+        self._enabled = self._is_vector_search_enabled()
         self.vector_search_port = None
         self.vector_indexer = None
         self.hybrid_search_port = None
@@ -45,11 +45,22 @@ class VectorSearchService:
     
     def _is_vector_search_enabled(self) -> bool:
         """環境変数からベクトル検索有効化確認"""
-        return os.getenv('VECTOR_SEARCH_ENABLED', 'False').lower() in ['true', '1', 'yes', 'on']
+        env_value = (
+            os.getenv('VECTOR_SEARCH_ENABLED')
+            or os.getenv('ENABLE_VECTOR_SEARCH')
+            or os.getenv('PAAS_ENABLE_VECTOR_SEARCH')
+        )
+        if env_value is None:
+            return False
+        return str(env_value).lower() in ['true', '1', 'yes', 'on']
+    
+    def is_enabled(self) -> bool:
+        """現在のベクトル検索有効状態を参照"""
+        return self._enabled
     
     async def initialize(self, force_recreate: bool = False) -> bool:
         """ベクトル検索サービス初期化"""
-        if not self.is_enabled:
+        if not self._enabled:
             logger.info("Vector search disabled by configuration")
             return False
         
@@ -149,7 +160,8 @@ class VectorSearchService:
         self, 
         query: str, 
         category_filter: Optional[str], 
-        top_k: int
+        top_k: int,
+        similarity_threshold: Optional[float] = None
     ) -> List[Dict[str, Any]]:
         """ベクトル検索実行"""
         try:
@@ -165,6 +177,9 @@ class VectorSearchService:
             search_results = await self.vector_search_port.search_similar(
                 query=query,
                 top_k=top_k,
+                similarity_threshold=similarity_threshold
+                if similarity_threshold is not None
+                else self.vector_search_port.config.similarity_threshold,
                 filter_metadata=filter_metadata
             )
             
@@ -175,6 +190,7 @@ class VectorSearchService:
                 converted['search_type'] = 'vector'
                 converted['relevance_score'] = result.score
                 converted['explanation'] = result.explanation
+                converted['metadata'] = getattr(result, 'metadata', {})
                 converted_results.append(converted)
             
             return converted_results
@@ -269,48 +285,105 @@ class VectorSearchService:
             logger.error(f"Fallback search failed: {e}")
             return []
     
+    async def vector_search(
+        self,
+        query: str,
+        top_k: int = 10,
+        similarity_threshold: Optional[float] = None,
+        category_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """ベクトル検索のみを実行（同期互換形式で返却）"""
+        try:
+            if not await self.initialize():
+                return []
+            
+            return await self._vector_search(
+                query=query,
+                category_filter=category_filter,
+                top_k=top_k,
+                similarity_threshold=similarity_threshold
+            )
+        except Exception as e:
+            logger.error(f"Vector search request failed: {e}")
+            return []
+    
     async def index_all_documents(self, force_recreate: bool = False) -> Dict[str, Any]:
         """全文書のベクトル化実行"""
         try:
             if not await self.initialize(force_recreate):
-                return {"error": "Vector search initialization failed"}
+                return {"error": "Vector search initialization failed", "success": False}
             
             if not self.vector_indexer:
-                return {"error": "Vector indexer not available"}
+                return {"error": "Vector indexer not available", "success": False}
             
             logger.info("Starting vector indexing for all documents...")
             results = await self.vector_indexer.index_all_existing_documents()
+            success_flag = results.get("failed", 0) == 0
+            results["success"] = success_flag
+            if "message" not in results:
+                total = results.get("total_documents", 0)
+                successful = results.get("successful", 0)
+                results["message"] = f"Indexed {successful}/{total} documents successfully"
             
             logger.info(f"Vector indexing completed: {results['successful']}/{results['total_documents']} successful")
             return results
             
         except Exception as e:
             logger.error(f"Document indexing failed: {e}")
+            return {"error": str(e), "success": False}
+    
+    async def get_indexing_status(self) -> Dict[str, Any]:
+        """ベクトルインデックスの状態取得"""
+        try:
+            if not await self.initialize():
+                return {"error": "Vector search initialization failed"}
+            
+            if not self.vector_indexer:
+                return {"error": "Vector indexer not available"}
+            
+            return await self.vector_indexer.get_indexing_status()
+        except Exception as e:
+            logger.error(f"Failed to fetch indexing status: {e}")
             return {"error": str(e)}
     
     async def get_service_status(self) -> Dict[str, Any]:
         """サービス状況取得"""
         try:
+            config = load_vector_search_config_from_env()
+            vector_dimension = int(os.getenv('VECTOR_DIMENSION', '384'))
             status = {
-                "enabled": self.is_enabled,
+                "enabled": self._enabled,
                 "initialized": False,
                 "vector_search_available": False,
                 "indexing_status": None,
-                "health": "unknown"
+                "health": "unknown",
+                "provider": config.provider,
+                "embedding_model": config.embedding_model,
+                "vector_dimension": vector_dimension
             }
             
-            if self.is_enabled and await self.initialize():
+            if not self._enabled:
+                status["health"] = "disabled"
+                status["error"] = "Vector search is disabled"
+                return status
+            
+            if await self.initialize():
                 status["initialized"] = True
                 
                 if self.vector_search_port:
                     health = await self.vector_search_port.health_check()
                     status["health"] = health.get("status", "unknown")
                     status["vector_search_available"] = health.get("status") == "healthy"
+                else:
+                    status["health"] = "unknown"
                 
                 if self.vector_indexer:
                     indexing_status = await self.vector_indexer.get_indexing_status()
                     status["indexing_status"] = indexing_status
-            
+            else:
+                status["error"] = "Vector search initialization failed"
+                status["health"] = "unavailable"
+                
             return status
             
         except Exception as e:

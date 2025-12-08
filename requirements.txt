@@ -257,7 +257,6 @@ colorama==0.4.6 ; os_name == 'nt' or sys_platform == 'win32' \
     # via
     #   build
     #   click
-    #   pytest
     #   tqdm
     #   uvicorn
 coloredlogs==15.0.1 \
@@ -347,40 +346,29 @@ fsspec==2025.9.0 \
     # via
     #   huggingface-hub
     #   torch
-google-ai-generativelanguage==0.6.15 \
-    --hash=sha256:5a03ef86377aa184ffef3662ca28f19eeee158733e45d7947982eb953c6ebb6c \
-    --hash=sha256:8f6d9dc4c12b065fe2d0289026171acea5183ebf2d0b11cefe12f3821e159ec3
-    # via google-generativeai
 google-api-core==2.25.2 ; python_full_version >= '3.14' \
     --hash=sha256:1c63aa6af0d0d5e37966f157a77f9396d820fba59f9e43e9415bc3dc5baff300 \
     --hash=sha256:e9a8f62d363dc8424a8497f4c2a47d6bcda6c16514c935629c257ab5d10210e7
     # via
-    #   google-ai-generativelanguage
     #   google-api-python-client
-    #   google-generativeai
 google-api-core==2.26.0 ; python_full_version < '3.14' \
     --hash=sha256:2b204bd0da2c81f918e3582c48458e24c11771f987f6258e6e227212af78f3ed \
     --hash=sha256:e6e6d78bd6cf757f4aee41dcc85b07f485fbb069d5daa3afb126defba1e91a62
     # via
-    #   google-ai-generativelanguage
     #   google-api-python-client
-    #   google-generativeai
 google-api-python-client==2.184.0 \
     --hash=sha256:15a18d02f42de99416921c77be235d12ead474e474a1abc348b01a2b92633fa4 \
     --hash=sha256:ef2a3330ad058cdfc8a558d199c051c3356f6ed012436c3ad3d08b67891b039f
     # via
-    #   google-generativeai
     #   research-data-management
 google-auth==2.41.1 \
     --hash=sha256:754843be95575b9a19c604a848a41be03f7f2afd8c019f716dc1f51ee41c639d \
     --hash=sha256:b76b7b1f9e61f0cb7e88870d14f6a94aeef248959ef6992670efee37709cbfd2
     # via
-    #   google-ai-generativelanguage
     #   google-api-core
     #   google-api-python-client
     #   google-auth-httplib2
     #   google-auth-oauthlib
-    #   google-generativeai
     #   kubernetes
     #   research-data-management
 google-auth-httplib2==0.2.0 \
@@ -541,10 +529,6 @@ importlib-resources==6.5.2 \
     --hash=sha256:185f87adef5bcc288449d98fb4fba07cea78bc036455dd44c5fc4a2fe78fed2c \
     --hash=sha256:789cfdc3ed28c78b67a06acb8126751ced69a3d5f79c095a98298cd8a760ccec
     # via chromadb
-iniconfig==2.1.0 \
-    --hash=sha256:3abbd2e30b36733fee78f9c7f7308f2d0050e88f0087fd25c2645f63c773e1c7 \
-    --hash=sha256:9deba5723312380e77435581c6bf4935c94cbfab9b1ed33ef8d238ea168eb760
-    # via pytest
 jinja2==3.1.6 \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
@@ -1002,7 +986,6 @@ packaging==25.0 \
     #   build
     #   huggingface-hub
     #   onnxruntime
-    #   pytest
     #   transformers
 pandas==2.3.3 \
     --hash=sha256:0242fe9a49aa8b4d78a4fa03acb397a58833ef6199e9aa40a95f027bb3a1b6e7 \
@@ -1129,10 +1112,6 @@ pillow==12.0.0 \
     --hash=sha256:fa3ed2a29a9e9d2d488b4da81dcb54720ac3104a20bf0bd273f1e4648aff5af9 \
     --hash=sha256:fb3096c30df99fd01c7bf8e544f392103d0795b9f98ba71a8054bcbf56b255f1
     # via sentence-transformers
-pluggy==1.6.0 \
-    --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
-    --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
-    # via pytest
 posthog==5.4.0 \
     --hash=sha256:284dfa302f64353484420b52d4ad81ff5c2c2d1d607c4e2db602ac72761831bd \
     --hash=sha256:701669261b8d07cdde0276e5bc096b87f9e200e3b9589c5ebff14df658c5893c
@@ -1141,7 +1120,6 @@ proto-plus==1.26.1 \
     --hash=sha256:13285478c2dcf2abb829db158e1047e2f1e8d63a077d94263c2b88b043c75a66 \
     --hash=sha256:21a515a4c4c0088a773899e23c7bbade3d18f9c66c73edd4c7ee3816bc96a012
     # via
-    #   google-ai-generativelanguage
     #   google-api-core
 protobuf==5.29.5 \
     --hash=sha256:3f1c6468a2cfd102ff4703976138844f78ebd1fb45f49011afc5139e9e283079 \
@@ -1152,9 +1130,7 @@ protobuf==5.29.5 \
     --hash=sha256:e38c5add5a311f2a6eb0340716ef9b039c1dfa428b28f25a7838ac329204a671 \
     --hash=sha256:fa18533a299d7ab6c55a238bf8629311439995f2e7eca5caaff08663606e9015
     # via
-    #   google-ai-generativelanguage
     #   google-api-core
-    #   google-generativeai
     #   googleapis-common-protos
     #   grpcio-status
     #   onnxruntime
@@ -1321,23 +1297,6 @@ pycparser==2.23 ; implementation_name != 'PyPy' and platform_python_implementati
     --hash=sha256:78816d4f24add8f10a06d6f05b4d424ad9e96cfebf68a4ddc99c65c0720d00c2 \
     --hash=sha256:e5c6e8d3fbad53479cab09ac03729e0a9faf2bee3db8208a550daf5af81a5934
     # via cffi
-pycryptodome==3.23.0 \
-    --hash=sha256:0011f7f00cdb74879142011f95133274741778abba114ceca229adbf8e62c3e4 \
-    --hash=sha256:11eeeb6917903876f134b56ba11abe95c0b0fd5e3330def218083c7d98bbcb3c \
-    --hash=sha256:156df9667ad9f2ad26255926524e1c136d6664b741547deb0a86a9acf5ea631f \
-    --hash=sha256:187058ab80b3281b1de11c2e6842a357a1f71b42cb1e15bce373f3d238135c27 \
-    --hash=sha256:257bb3572c63ad8ba40b89f6fc9d63a2a628e9f9708d31ee26560925ebe0210a \
-    --hash=sha256:447700a657182d60338bab09fdb27518f8856aecd80ae4c6bdddb67ff5da44ef \
-    --hash=sha256:4764e64b269fc83b00f682c47443c2e6e85b18273712b98aa43bcb77f8570477 \
-    --hash=sha256:507dbead45474b62b2bbe318eb1c4c8ee641077532067fec9c1aa82c31f84886 \
-    --hash=sha256:53ecbafc2b55353edcebd64bf5da94a2a2cdf5090a6915bcca6eca6cc452585a \
-    --hash=sha256:6501790c5b62a29fcb227bd6b62012181d886a767ce9ed03b303d1f22eb5c625 \
-    --hash=sha256:67bd81fcbe34f43ad9422ee8fd4843c8e7198dd88dd3d40e6de42ee65fbe1490 \
-    --hash=sha256:763d1d74f56f031788e5d307029caef067febf890cd1f8bf61183ae142f1a77b \
-    --hash=sha256:90460fc9e088ce095f9ee8356722d4f10f86e5be06e2354230a9880b9c549aae \
-    --hash=sha256:954af0e2bd7cea83ce72243b14e4fb518b18f0c1649b576d114973e2073b273d \
-    --hash=sha256:9a53a4fe5cb075075d515797d6ce2f56772ea7e6a1e5e4b96cf78a14bac3d265 \
-    --hash=sha256:9a77627a330ab23ca43b48b130e202582e91cc69619947840ea4d2d1be21eb39 \
     --hash=sha256:aa0698f65e5b570426fc31b8162ed4603b0c2841cbb9088e2b01641e3065915b \
     --hash=sha256:c75b52aacc6c0c260f204cbdd834f76edc9fb0d8e0da9fbf8352ef58202564e2 \
     --hash=sha256:c8987bd3307a39bc03df5c8e0e3d8be0c4c3518b7f044b0f4c15d1aa78f52575 \
@@ -1352,7 +1311,6 @@ pydantic==2.12.2 \
     # via
     #   chromadb
     #   fastapi
-    #   google-generativeai
 pydantic-core==2.41.4 \
     --hash=sha256:025ba34a4cf4fb32f917d5d188ab5e702223d3ba603be4d8aca2f82bede432a4 \
     --hash=sha256:09c2a60e55b357284b5f31f5ab275ba9f7f70b7525e18a132ec1f9160b4f1f03 \
@@ -1442,7 +1400,6 @@ pygments==2.19.2 \
     --hash=sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887 \
     --hash=sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b
     # via
-    #   pytest
     #   rich
 pyjwt==2.10.1 \
     --hash=sha256:3cc5772eb20009233caf06e9d8a0577824723b44e6648ee0a2aedb6cf9381953 \
@@ -1467,16 +1424,6 @@ pyreadline3==3.5.4 ; sys_platform == 'win32' \
     --hash=sha256:8d57d53039a1c75adba8e50dd3d992b28143480816187ea5efbd5c78e6c885b7 \
     --hash=sha256:eaf8e6cc3c49bcccf145fc6067ba8643d1df34d604a1ec0eccbf7a18e6d3fae6
     # via humanfriendly
-pytest==8.4.2 \
-    --hash=sha256:86c0d0b93306b961d58d62a4db4879f27fe25513d4b969df351abdddb3c30e01 \
-    --hash=sha256:872f880de3fc3a5bdc88a11b39c9710c3497a547cfa9320bc3c5e62fbf272e79
-    # via
-    #   pytest-asyncio
-    #   research-data-management
-pytest-asyncio==1.2.0 \
-    --hash=sha256:8e17ae5e46d8e7efe51ab6494dd2010f4ca8dae51652aa3c8d55acf50bfb2e99 \
-    --hash=sha256:c609a64a2a8768462d0c99811ddb8bd2583c33fd33cf7f21af1c142e824ffb57
-    # via research-data-management
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
@@ -1984,7 +1931,6 @@ tqdm==4.67.1 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
     # via
     #   chromadb
-    #   google-generativeai
     #   huggingface-hub
     #   sentence-transformers
     #   transformers
@@ -2011,7 +1957,6 @@ typing-extensions==4.15.0 \
     #   anyio
     #   chromadb
     #   fastapi
-    #   google-generativeai
     #   grpcio
     #   huggingface-hub
     #   opentelemetry-api
@@ -2020,7 +1965,6 @@ typing-extensions==4.15.0 \
     #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
-    #   pytest-asyncio
     #   referencing
     #   sentence-transformers
     #   starlette

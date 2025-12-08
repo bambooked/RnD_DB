@@ -1,3 +1,8 @@
+"""OpenAI APIクライアント実装
+
+OpenAI GPT-4等のモデルを利用するためのクライアント実装。
+"""
+
 import json
 import logging
 import time
@@ -6,45 +11,32 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from agent.source.analyzer.llm_interface import LLMClientInterface
-from tools.config import (
-    OPENROUTER_API_BASE,
-    OPENROUTER_API_KEY,
-    OPENROUTER_MODEL,
-    OPENROUTER_REFERER,
-    OPENROUTER_TITLE,
-)
 from services.admin_metrics import admin_metrics
 
 logger = logging.getLogger(__name__)
 
 
-class OpenRouterClient(LLMClientInterface):
-    """OpenRouter Chat Completions クライアント"""
+class OpenAIClient(LLMClientInterface):
+    """OpenAI Chat Completions クライアント"""
 
-    def __init__(self, model: Optional[str] = None):
-        if not OPENROUTER_API_KEY:
-            raise ValueError("OPENROUTER_API_KEY が設定されていません")
+    def __init__(self, api_key: str, model: str = "gpt-4-turbo-preview"):
+        if not api_key:
+            raise ValueError("OpenAI API Key が設定されていません")
 
-        self.model = model or OPENROUTER_MODEL
-        if not self.model:
-            raise ValueError("OPENROUTER_MODEL が設定されていません")
-
+        self.api_key = api_key
+        self.model = model
         self.session = requests.Session()
-        base_url = (OPENROUTER_API_BASE or "https://openrouter.ai/api/v1").rstrip("/")
-        self.endpoint = f"{base_url}/chat/completions"
+        self.endpoint = "https://api.openai.com/v1/chat/completions"
         self.headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        if OPENROUTER_REFERER:
-            self.headers["HTTP-Referer"] = OPENROUTER_REFERER
-        if OPENROUTER_TITLE:
-            self.headers["X-Title"] = OPENROUTER_TITLE
 
-        logger.info("OpenRouter クライアント初期化完了: モデル=%s", self.model)
+        logger.info("OpenAI クライアント初期化完了: モデル=%s", self.model)
 
     @staticmethod
     def _build_messages(prompt: str, system: Optional[str] = None) -> List[Dict[str, str]]:
+        """メッセージリストを構築"""
         messages: List[Dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -53,6 +45,7 @@ class OpenRouterClient(LLMClientInterface):
 
     @staticmethod
     def _extract_text(data: Dict[str, Any]) -> Optional[str]:
+        """レスポンスからテキストを抽出"""
         choices = data.get("choices") or []
         if not choices:
             return None
@@ -62,20 +55,6 @@ class OpenRouterClient(LLMClientInterface):
 
         if isinstance(content, str):
             return content
-
-        if isinstance(content, list):
-            parts: List[str] = []
-            for part in content:
-                if isinstance(part, str):
-                    parts.append(part)
-                    continue
-                if isinstance(part, dict):
-                    if "text" in part and isinstance(part["text"], str):
-                        parts.append(part["text"])
-                    elif part.get("type") in {"text", "output_text"} and isinstance(part.get("content"), str):
-                        parts.append(part["content"])
-            if parts:
-                return "".join(parts)
 
         return None
 
@@ -90,6 +69,7 @@ class OpenRouterClient(LLMClientInterface):
         response_format: Optional[Dict[str, Any]] = None,
         retry_count: int = 3,
     ) -> Optional[str]:
+        """OpenAI APIリクエスト実行"""
         last_error: Optional[Exception] = None
         for attempt in range(retry_count):
             payload: Dict[str, Any] = {
@@ -112,6 +92,8 @@ class OpenRouterClient(LLMClientInterface):
                 )
                 response.raise_for_status()
                 data = response.json()
+
+                # 使用量記録
                 usage = data.get("usage") if isinstance(data, dict) else None
                 if usage:
                     try:
@@ -123,14 +105,16 @@ class OpenRouterClient(LLMClientInterface):
                         )
                     except Exception as metrics_error:  # pylint: disable=broad-except
                         logger.warning("LLM使用量記録に失敗: %s", metrics_error)
+
                 text = self._extract_text(data)
                 if text:
                     return text.strip()
-                logger.warning("OpenRouter API: 空のレスポンスが返されました")
+                logger.warning("OpenAI API: 空のレスポンスが返されました")
+
             except requests.RequestException as exc:
                 last_error = exc
                 logger.error(
-                    "OpenRouter API リクエストエラー (試行 %s/%s): %s",
+                    "OpenAI API リクエストエラー (試行 %s/%s): %s",
                     attempt + 1,
                     retry_count,
                     exc,
@@ -138,7 +122,7 @@ class OpenRouterClient(LLMClientInterface):
             except ValueError as exc:
                 last_error = exc
                 logger.error(
-                    "OpenRouter API レスポンス解析エラー (試行 %s/%s): %s",
+                    "OpenAI API レスポンス解析エラー (試行 %s/%s): %s",
                     attempt + 1,
                     retry_count,
                     exc,
@@ -150,6 +134,77 @@ class OpenRouterClient(LLMClientInterface):
         if last_error:
             raise last_error
         return None
+
+    def generate_response(
+        self,
+        prompt: str,
+        retry_count: int = 3,
+        *,
+        temperature: float = 0.7,
+        top_p: float = 0.95,
+        max_tokens: int = 1024,
+    ) -> str:
+        """汎用テキスト応答生成"""
+        text = self._make_request(
+            self._build_messages(prompt),
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            retry_count=retry_count,
+        )
+        if not text:
+            raise RuntimeError("OpenAI APIから有効なレスポンスが得られませんでした")
+        return text
+
+    def analyze_text(
+        self,
+        text: str,
+        prompt_template: str,
+        retry_count: int = 3,
+        **format_kwargs: Any,
+    ) -> Optional[Dict[str, Any]]:
+        """テキストを解析してJSONを取得"""
+        format_values: Dict[str, Any] = {"text": text}
+        format_values.update(format_kwargs)
+
+        try:
+            prompt = prompt_template.format(**format_values)
+        except KeyError:
+            prompt = prompt_template
+
+        try:
+            response_text = self._make_request(
+                self._build_messages(prompt),
+                temperature=0.7,
+                top_p=0.95,
+                max_tokens=8192,
+                response_format={"type": "json_object"},
+                retry_count=retry_count,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("テキスト解析エラー: %s", exc)
+            return None
+
+        if not response_text:
+            logger.warning("空のレスポンスが返されました")
+            return None
+
+        # JSONパース
+        cleaned = response_text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip().replace("\r\n", "\n")
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            logger.error("JSONパースエラー: %s", exc)
+            logger.debug("レスポンス内容: %s", cleaned[:500])
+            return None
 
     def generate_research_advice_enhanced(self, prompt: str, retry_count: int = 3) -> Optional[str]:
         """拡張研究アドバイス生成"""
@@ -253,92 +308,6 @@ class OpenRouterClient(LLMClientInterface):
             logger.error("データセット文脈解説生成エラー: %s", exc)
         return None
 
-    def generate_response(
-        self,
-        prompt: str,
-        retry_count: int = 3,
-        *,
-        temperature: float = 0.7,
-        top_p: float = 0.95,
-        max_tokens: int = 1024,
-    ) -> str:
-        """汎用テキスト応答生成"""
-        text = self._make_request(
-            self._build_messages(prompt),
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens,
-            retry_count=retry_count,
-        )
-        if not text:
-            raise RuntimeError("OpenRouter APIから有効なレスポンスが得られませんでした")
-        return text
-
-    def analyze_text(
-        self,
-        text: str,
-        prompt_template: str,
-        retry_count: int = 3,
-        **format_kwargs: Any,
-    ) -> Optional[Dict[str, Any]]:
-        """テキストを解析してJSONを取得"""
-        format_values: Dict[str, Any] = {"text": text}
-        format_values.update(format_kwargs)
-
-        try:
-            prompt = prompt_template.format(**format_values)
-        except KeyError:
-            # 既に整形済みのテンプレートを想定
-            prompt = prompt_template
-
-        try:
-            response_text = self._make_request(
-                self._build_messages(prompt),
-                temperature=0.7,
-                top_p=0.95,
-                max_tokens=8192,
-                response_format={"type": "json_object"},
-                retry_count=retry_count,
-            )
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("テキスト解析エラー: %s", exc)
-            return None
-
-        if not response_text:
-            logger.warning("空のレスポンスが返されました")
-            return None
-
-        cleaned = response_text.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[7:]
-        elif cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-        cleaned = cleaned.strip().replace("\r\n", "\n")
-
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError as exc:
-            logger.error("JSONパースエラー: %s", exc)
-            logger.debug("レスポンス内容: %s", cleaned[:500])
-            return None
-
-    def analyze_file_content(
-        self,
-        file_path: str,
-        file_content: str,
-        file_type: str,
-    ) -> Optional[Dict[str, Any]]:
-        """ファイル内容を解析"""
-        if file_type == "pdf":
-            return self._analyze_pdf_content(file_content)
-        if file_type in ["csv", "json", "jsonl"]:
-            return self._analyze_data_content(file_content, file_type)
-
-        logger.warning("未対応のファイルタイプ: %s", file_type)
-        return None
-
     def analyze_paper_metadata(self, file_name: str, content: str) -> Optional[Dict[str, Any]]:
         """論文/ポスターのPDFからメタデータを抽出"""
         prompt = f"""以下の研究論文またはポスターのPDFテキストから、メタデータを抽出してJSON形式で返してください。
@@ -376,6 +345,21 @@ PDF内容（最初の部分）:
         if result is not None:
             logger.info("論文メタデータ解析成功: %s", file_name)
         return result
+
+    def analyze_file_content(
+        self,
+        file_path: str,
+        file_content: str,
+        file_type: str,
+    ) -> Optional[Dict[str, Any]]:
+        """ファイル内容を解析"""
+        if file_type == "pdf":
+            return self._analyze_pdf_content(file_content)
+        if file_type in ["csv", "json", "jsonl"]:
+            return self._analyze_data_content(file_content, file_type)
+
+        logger.warning("未対応のファイルタイプ: %s", file_type)
+        return None
 
     def _analyze_pdf_content(self, content: str) -> Optional[Dict[str, Any]]:
         """PDF文書を解析"""

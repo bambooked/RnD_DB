@@ -153,7 +153,8 @@ class DatabaseConnection:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             top_provider TEXT,
             architecture TEXT,
-            modality TEXT
+            modality TEXT,
+            visible INTEGER NOT NULL DEFAULT 1
         );
 
         -- インデックス作成
@@ -170,6 +171,16 @@ class DatabaseConnection:
         
         with self.get_connection() as conn:
             conn.executescript(create_tables_sql)
+            # 既存テーブルにvisibleカラムがなければ追加
+            cursor = conn.execute("PRAGMA table_info(openrouter_models)")
+            columns = {row["name"] for row in cursor.fetchall()}
+            if "visible" not in columns:
+                conn.execute(
+                    "ALTER TABLE openrouter_models "
+                    "ADD COLUMN visible INTEGER NOT NULL DEFAULT 1"
+                )
+                conn.execute("UPDATE openrouter_models SET visible = 1 WHERE visible IS NULL")
+                logger.info("openrouter_modelsテーブルにvisibleカラムを追加しました")
             logger.info("データベースの初期化が完了しました")
     
     def execute_query(self, query: str, params: Optional[tuple] = None):
