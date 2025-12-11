@@ -4,11 +4,6 @@ __pycache__/
 build/
 dist/
 wheels/
-data/
-!sample_data/
-credentials/
-vector_db/
-database/
 *.egg-info
 
 # Virtual environments
@@ -16,16 +11,27 @@ database/
 .env
 .coverage
 
-
+# dataたち
+data/
+vector_db/
+database/
+*.db
+agent/database/research_data.db
 
 # claude
 CLAUDE.md
 claude.md
 
 # Google Drive認証情報（機密情報）
+credentials/
 google_drive_credentials.json
 google_drive_credentials_token.json
 
+# ルートディレクトリのJSONファイルのみ除外（設定ファイル等）
+/*.json
 
-*.json
-.DS_store
+# sample_dataディレクトリは追跡対象（デモ用データ）
+!sample_data/
+!sample_data/**
+
+.DS_Store

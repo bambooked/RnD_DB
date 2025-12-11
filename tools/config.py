@@ -8,8 +8,29 @@ load_dotenv()
 
 # 基本パス
 BASE_DIR = Path(__file__).parent.parent  # プロジェクトルートに移動
-DATA_DIR = BASE_DIR / os.getenv("DATA_DIR_PATH", "data")
 DATABASE_DIR = BASE_DIR / "agent" / "database"
+
+# デモモード設定
+DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
+
+# データディレクトリパス（デモモード対応）
+def get_data_dir() -> Path:
+    """
+    データディレクトリのパスを取得
+
+    DEMO_MODE=true の場合: sample_data/data を使用
+    DEMO_MODE=false の場合: data を使用（デフォルト）
+
+    Returns:
+        Path: データディレクトリのパス
+    """
+    if DEMO_MODE:
+        return BASE_DIR / "sample_data" / "data"
+    else:
+        return BASE_DIR / os.getenv("DATA_DIR_PATH", "data")
+
+# 後方互換性のため DATA_DIR も維持
+DATA_DIR = get_data_dir()
 
 # LLMプロバイダー設定
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()
@@ -73,8 +94,11 @@ def validate_config():
     else:
         errors.append(f"未対応のLLMプロバイダーです: {LLM_PROVIDER}（openrouter, openai, gemini のいずれかを指定してください）")
 
-    if not DATA_DIR.exists():
-        errors.append(f"データディレクトリが存在しません: {DATA_DIR}")
+    data_dir = get_data_dir()
+    if not data_dir.exists():
+        errors.append(f"データディレクトリが存在しません: {data_dir}")
+        if DEMO_MODE:
+            errors.append("DEMO_MODE=true ですが、sample_data/data ディレクトリが見つかりません")
 
     # データベースディレクトリが存在しない場合は作成
     DATABASE_DIR.mkdir(parents=True, exist_ok=True)

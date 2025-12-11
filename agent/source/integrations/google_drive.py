@@ -286,9 +286,10 @@ class GoogleDriveIntegration:
             db_path = os.getenv('DATABASE_PATH', 'agent/database/research_data.db')
             if os.path.exists(db_path):
                 self.upload_file(db_path, backup_folder_id)
-            
-            # データフォルダをバックアップ
-            data_dir = os.getenv('DATA_DIR_PATH', 'data')
+
+            # データフォルダをバックアップ（デモモード対応）
+            from tools.config import get_data_dir
+            data_dir = str(get_data_dir())
             if os.path.exists(data_dir):
                 self.sync_folder(data_dir, backup_folder_id)
             

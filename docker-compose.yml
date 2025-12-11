@@ -9,8 +9,8 @@ services:
     env_file:
       - .env
     volumes:
-      # データの永続化
-      - ./data:/app/data
+      # データの永続化（sample_dataを使用）
+      - ./sample_data/data:/app/data
       - ./agent/database:/app/agent/database
     environment:
       # デフォルト設定（.envで上書き可能）

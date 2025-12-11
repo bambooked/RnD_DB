@@ -19,7 +19,9 @@
       "Bash(done)",
       "Bash(git log:*)",
       "Bash(git verify-pack:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

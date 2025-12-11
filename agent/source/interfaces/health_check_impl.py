@@ -202,8 +202,8 @@ class HealthCheckImpl(HealthCheckPort):
     async def _check_filesystem_health(self) -> Dict[str, Any]:
         """ファイルシステムヘルスチェック"""
         try:
-            from tools.config import DATA_DIR
-            data_dir = DATA_DIR
+            from tools.config import get_data_dir
+            data_dir = get_data_dir()
             
             if not data_dir.exists():
                 return {

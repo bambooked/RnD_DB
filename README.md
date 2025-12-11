@@ -73,7 +73,7 @@ Google Drive連携とAI（Google Gemini + セマンティック検索）を活�
 - **OAuth 2.0**: セキュアな認証（Web認証フロー）
 - **JWT**: セッション管理・トークン認証
 - **PyTorch**: 機械学習バックエンド（MPS/CUDA対応）
-- **Docker**: コンテナ化（未実装）
+- **Docker**: コンテナ化（docker-compose対応）
 - **Render.com**: PaaSデプロイ先（未実装）
 
 ### 開発ツール
@@ -85,7 +85,35 @@ Google Drive連携とAI（Google Gemini + セマンティック検索）を活�
 
 ## クイックスタート
 
-### 1. 依存関係のインストール
+### 🐳 Docker使用時（推奨・最速）
+
+サンプルデータを使ってすぐに試したい場合：
+
+```bash
+# サンプルデータ付きで起動
+docker-compose up
+
+# バックグラウンドで起動
+docker-compose up -d
+
+# ログを確認
+docker-compose logs -f
+```
+
+起動後、http://localhost:8000 にアクセスすると、サンプルデータが自動的にロードされた状態で利用できます。
+
+**初回起動時の動作**:
+- データベースが空の場合、自動的に `sample_data/data/` ディレクトリがスキャンされます
+- 論文、ポスター、データセットが自動的にインデックス化されます
+- OpenRouter APIキーが設定されている場合、PDF解析も実行されます（オプション）
+
+**注意**: 完全な機能を利用するには、以下の環境変数を `.env` ファイルに設定してください：
+- `OPENROUTER_API_KEY`: PDF解析やAI相談機能を使用する場合
+- Google OAuth設定: Google Drive連携を使用する場合
+
+### 💻 ローカル開発環境セットアップ
+
+#### 1. 依存関係のインストール
 
 ```bash
 # uvを使用（推奨）
@@ -95,14 +123,14 @@ uv sync --dev
 pip install chromadb sentence-transformers fastapi uvicorn python-dotenv google-api-python-client google-auth-oauthlib scikit-learn pypdf2
 ```
 
-### 2. 環境設定
+#### 2. 環境設定
 
 ```bash
 # 環境変数ファイルを編集
 vim .env
 
 # 必須項目
-GEMINI_API_KEY=your_gemini_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key  # OpenRouter APIキー
 ENABLE_VECTOR_SEARCH=true  # ベクトル検索を有効化
 
 # Google OAuth設定（Web OAuth用）
@@ -111,7 +139,7 @@ OAUTH_CLIENT_SECRET=your_oauth_client_secret
 OAUTH_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
 ```
 
-### 3. Google OAuth設定（Web認証）
+#### 3. Google OAuth設定（Web認証）
 
 1. [Google Cloud Console](https://console.cloud.google.com/)でプロジェクト作成
 2. **OAuth 2.0 クライアント ID**を作成（Webアプリケーション）
@@ -119,17 +147,17 @@ OAUTH_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
 4. クライアントIDとシークレットを`.env`に設定
 5. Drive APIを有効化
 
-### 4. Webアプリ起動
+#### 4. Webアプリ起動
 
 ```bash
 # メインWebアプリケーション起動
-uvicorn web_app:app --reload
+uvicorn app.main:app --reload
 
 # または uvコマンド経由
-uv run uvicorn web_app:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 5. アクセス & 初期設定
+#### 5. アクセス & 初期設定
 
 1. ブラウザで http://localhost:8000 にアクセス
 2. **「同期」ボタン** → **「Googleでログイン」**をクリック
@@ -500,11 +528,12 @@ uv run python -c "from agent.source.analyzer.new_analyzer import NewFileAnalyzer
 uv run python tests/integration/test_paas_integration.py
 ```
 
-### デプロイメント（未実装）
+### デプロイメント
+
 ```bash
-# ローカル開発環境（Docker）- 未実装
-# docker-compose up -d
-# docker-compose logs -f
+# ローカル開発環境（Docker）
+docker-compose up -d
+docker-compose logs -f
 
 # 本番デプロイ（Render.com）- 未実装
 # ./scripts/deploy.sh -e production
@@ -705,10 +734,9 @@ data/
 
 ### 🚧 未実装機能
 
-- **Docker化**: docker-compose.yml, Dockerfile未作成
 - **デプロイスクリプト**: Render.comデプロイ自動化
 - **データベース移行**: SQLite→PostgreSQL移行スクリプト
-- **Looker Studio連携**: データエクスポート機能（ブランチ名のみ存在）
+- **Looker Studio連携**: データエクスポート機能（一部実装）
 
 ### 📝 テスト状況
 - **単体テスト**: agent/tests/ にて一部実装

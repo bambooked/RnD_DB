@@ -574,19 +574,19 @@ def _determine_file_category(filename: str, file_path: Path) -> str:
 def _get_target_path(category: str, filename: str) -> Path:
     """
     カテゴリに基づく配置先パス取得
-    
+
     Args:
         category: ファイルカテゴリ
         filename: ファイル名
-        
+
     Returns:
         Path: 配置先パス
     """
     from pathlib import Path
-    import os
-    
-    # DATA_DIRを取得（既存config.pyと統合）
-    data_dir = Path(os.getenv("DATA_DIR_PATH", "data"))
+    from tools.config import get_data_dir
+
+    # データディレクトリを取得（デモモード対応）
+    data_dir = get_data_dir()
     
     if category == "dataset":
         # データセットは専用ディレクトリに配置

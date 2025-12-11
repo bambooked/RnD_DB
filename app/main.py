@@ -25,6 +25,7 @@ sys.path.append(".")
 
 from agent.source.database.connection import db_connection
 from agent.source.database.new_models import Dataset, DatasetFile, Paper, PaperDatasetRelation, Poster, PosterDatasetRelation
+from agent.source.indexer.new_indexer import NewFileIndexer
 from services.admin_metrics import admin_metrics
 
 from .core import (
@@ -106,6 +107,28 @@ async def startup_event():
     # データベース初期化
     db_connection.initialize_database()
     logger.info("データベース初期化完了")
+
+    # データディレクトリのスキャンとインデックス化（初回起動時）
+    try:
+        # 既存データ件数を確認
+        paper_count = len(paper_repo.find_all())
+        dataset_count = len(dataset_repo.find_all())
+
+        # データが空の場合のみスキャンを実行
+        if paper_count == 0 and dataset_count == 0:
+            logger.info("データベースが空です。データディレクトリをスキャンします...")
+            indexer = NewFileIndexer(auto_analyze=False)  # 初回は解析なしで高速化
+            index_result = indexer.index_all_files()
+            logger.info(
+                f"初期データスキャン完了: "
+                f"データセット={index_result.get('datasets', 0)}, "
+                f"論文={index_result.get('papers', 0)}, "
+                f"ポスター={index_result.get('posters', 0)}"
+            )
+        else:
+            logger.info(f"既存データを検出: 論文={paper_count}件, データセット={dataset_count}件")
+    except Exception as e:
+        logger.error(f"初期データスキャンエラー: {e}")
 
     # OpenRouterモデル一覧の初回同期
     try:

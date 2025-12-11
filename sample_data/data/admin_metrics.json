@@ -1,0 +1,41 @@
+{
+  "llm_usage": {
+    "total_calls": 25,
+    "total_prompt_tokens": 68064,
+    "total_completion_tokens": 8195,
+    "total_tokens": 76260,
+    "per_model": {
+      "google/gemini-2.5-flash": {
+        "calls": 2,
+        "prompt_tokens": 3682,
+        "completion_tokens": 536,
+        "total_tokens": 4218
+      },
+      "cohere/command-r7b-12-2024": {
+        "calls": 1,
+        "prompt_tokens": 1918,
+        "completion_tokens": 260,
+        "total_tokens": 2178
+      },
+      "anthropic/claude-3-haiku": {
+        "calls": 19,
+        "prompt_tokens": 58216,
+        "completion_tokens": 7207,
+        "total_tokens": 65423
+      },
+      "amazon/nova-2-lite-v1": {
+        "calls": 1,
+        "prompt_tokens": 3276,
+        "completion_tokens": 184,
+        "total_tokens": 3460
+      },
+      "gemini-2.0-flash-exp": {
+        "calls": 2,
+        "prompt_tokens": 972,
+        "completion_tokens": 8,
+        "total_tokens": 981
+      }
+    }
+  },
+  "events": []
+}

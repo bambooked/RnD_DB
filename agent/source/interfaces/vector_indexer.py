@@ -38,9 +38,10 @@ class VectorIndexer:
         self.paper_repo = PaperRepository()
         self.poster_repo = PosterRepository()
         self.dataset_file_repo = DatasetFileRepository()
-        
-        # データディレクトリパス
-        self.data_dir = Path(os.getenv('DATA_DIR_PATH', 'data'))
+
+        # データディレクトリパス（デモモード対応）
+        from tools.config import get_data_dir
+        self.data_dir = get_data_dir()
     
     async def initialize_vector_search(self, force_recreate: bool = False) -> bool:
         """ベクトル検索システム初期化"""

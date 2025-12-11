@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 import logging
 
-from tools.config import DATA_DIR, SUPPORTED_EXTENSIONS, MAX_FILE_SIZE_BYTES
+from tools.config import get_data_dir, SUPPORTED_EXTENSIONS, MAX_FILE_SIZE_BYTES
 from ..database.models import File
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class FileScanner:
     """データディレクトリのファイルをスキャンするクラス"""
     
     def __init__(self, data_dir: Optional[Path] = None):
-        self.data_dir = data_dir or DATA_DIR
+        self.data_dir = data_dir or get_data_dir()
         self.supported_extensions = SUPPORTED_EXTENSIONS
     
     def scan_directory(self) -> List[File]:
