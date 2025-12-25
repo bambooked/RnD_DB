@@ -1,51 +1,54 @@
 # 研究データ管理システム - R&D DB
 
-<div align="center">
-  <img src="docs/images/icon.png" alt="R&D DB Icon" width="200"/>
-</div>
+<!-- ![R&D DB Icon](docs/images/icon.png) -->
 
-<div align="center">
-  <strong>Google Drive連携 & AI研究相談を備えた研究データ管理システム</strong>
-</div>
-
----
+**Google Drive連携 & AI研究相談を備えた研究データ管理システム**
 
 ## システム概要
 
-このシステムは3つの核心機能で研究活動を支援します：
+### 主要機能
 
-### 1. Google Drive連携による自動データ管理
+このシステムは以下の3つの主要な機能を持っています。
+
+**1. Google Drive連携による自動データ管理**
+
 Google Driveに保存された研究データを自動的に同期・解析し、メタデータを抽出してデータベースに格納します。
 
-### 2. セマンティック検索（ベクトル検索）
+**2. セマンティック検索（ベクトル検索）**
+
 キーワードだけでなく、意味的な関連性に基づいて論文やデータセットを検索できます。
 
-### 3. AI研究相談（RAG + LLM）
+**3. AI研究相談（RAG + LLM**
+
 データベース内の研究データをコンテキストとして、LLMが的確な研究アドバイスを提供します。
+
+
+### 提供できる価値
+
+以上の機能により、組織のデータ格納基盤として使われることの多いGoogle Driveを基礎にしつつ、研究にまつわるデータのInputを楽に行えるようにしつつも、Outputも自然言語で行えるようになり、研究の手間を最小限にします。
 
 ---
 
 ## 動作イメージ
 
 ### ダッシュボード
-<div align="center">
-  <img src="docs/images/dashboad_sample.png" alt="Dashboard" width="800"/>
-</div>
+
+![Dashboard](docs/images/dashboad_sample.png)
 
 システム全体の統計情報とデータベースの状態をリアルタイムで確認できます。
 
 ### AI研究相談
-<div align="center">
-  <img src="docs/images/chat_sample.png" alt="Chat Interface" width="800"/>
-</div>
+
+![Chat Interface](docs/images/chat_sample.png)
 
 研究に関する質問をすると、データベース内の関連データを参照しながらAIが回答します。
 
 ---
 
-## なぜこのシステムを作ったのか
+## このシステムの作成背景
 
-研究活動において、論文、データセット、ポスターなどの研究成果物は日々増え続けます。しかし、これらのデータは散在しがちで、以下のような課題がありました：
+研究活動において、論文、データセット、ポスターなどの研究成果物は日々増え続けます。
+しかし、これらのデータは散在しがちで、以下のような課題がありました：
 
 - **データの所在が分からない**: 「あのデータセット、どこに保存したっけ？」
 - **関連性の把握が困難**: 「この論文に使われているデータセットはどれ？」
@@ -93,7 +96,7 @@ Google Driveに保存された研究データを自動的に同期・解析し�
 
 ---
 
-## 📁 アーキテクチャとディレクトリ構造
+## アーキテクチャとディレクトリ構造
 
 ### システムアーキテクチャ
 
@@ -127,7 +130,7 @@ graph TB
 
 ### ディレクトリ構造
 
-```
+``` text
 /
 ├── app/                          # メインアプリケーション
 │   ├── main.py                   # FastAPIエントリーポイント
@@ -200,39 +203,37 @@ graph TB
 ### 設計の特徴
 
 #### 1. レイヤードアーキテクチャ
+
 - **プレゼンテーション層**: FastAPI + Jinja2によるWebUI
 - **ビジネスロジック層**: agent/source/内のコアモジュール
 - **データアクセス層**: リポジトリパターンによるDB抽象化
 
 #### 2. シングルトンコンテキスト管理
+
 `app/core/context.py`で全コンポーネントを一元管理し、依存性注入を実現。
 
 #### 3. ポート&アダプターパターン
+
 `agent/source/interfaces/`で抽象化レイヤーを提供し、外部サービスの差し替えを容易に。
 
 #### 4. 非同期処理
+
 FastAPIの非同期機能を活用し、Google Drive同期やLLM API呼び出しをブロッキングせずに実行。
 
 ---
 
-## 🚀 主要機能の技術的詳細
+## 主要機能の技術的詳細
 
 ### 1. Google Drive連携
 
-#### OAuth 2.0認証フロー
-```python
-# 1. ユーザーがGoogleログインボタンをクリック
-# 2. Google認証画面へリダイレクト
-# 3. 認証成功後、コールバックURLへトークンを受け取り
-# 4. トークンを使用してGoogle Drive APIにアクセス
-```
-
 #### 自動ファイル同期
+
 - フォルダ構造認識（`datasets/`, `paper/`, `poster/`）
 - ファイルハッシュによる重複排除
 - メタデータの自動保存（Google Drive URL含む）
 
 #### 実装の工夫
+
 - **リトライ機構**: API制限に対する指数バックオフ
 - **バッチ処理**: 大量ファイルの効率的な処理
 - **差分同期**: 変更されたファイルのみを更新
@@ -261,6 +262,7 @@ graph TD
 ```
 
 #### ハイブリッド検索
+
 ベクトル検索が利用不可の場合、TF-IDFによるキーワード検索にフォールバック。
 
 ### 3. AI研究相談（RAG + LLM）
@@ -319,6 +321,7 @@ def research_consultation(query: str) -> str:
 ```
 
 #### スマート関連性フィルタリング
+
 - **キーワード抽出**: クエリから重要キーワードを抽出
 - **ストップワード除去**: 一般的すぎる単語を除外
 - **スコアリング**: 関連性スコアに基づいて推薦精度を向上
@@ -327,73 +330,13 @@ def research_consultation(query: str) -> str:
 ### 4. マルチLLMプロバイダ対応
 
 #### OpenRouter API統合
+
 単一のAPIで複数のLLMモデルを利用可能：
+
 - Claude 3.5 Sonnet
 - GPT-4
 - Gemini 2.0 Flash
 
 #### モデル自動同期
+
 24時間ごとにOpenRouterのモデル一覧を自動取得し、データベースに保存。
-
----
-
-## ⚡ クイックスタート
-
-### 1. 依存関係のインストール
-
-```bash
-# uvを使用（推奨）
-uv sync --dev
-```
-
-### 2. 環境変数の設定
-
-```bash
-# .envファイルを作成
-cp .env.example .env
-
-# 必須項目を編集
-vim .env
-```
-
-必要な環境変数：
-```env
-# OpenRouter API（必須）
-OPENROUTER_API_KEY=your_api_key_here
-OPENROUTER_MODEL=openrouter/anthropic/claude-3.5-sonnet
-
-# Google OAuth（オプション）
-GOOGLE_OAUTH_CLIENT_ID=your_client_id
-GOOGLE_OAUTH_CLIENT_SECRET=your_client_secret
-
-# ベクトル検索（オプション、推奨）
-ENABLE_VECTOR_SEARCH=true
-```
-
-### 3. Webアプリケーション起動
-
-```bash
-# メインアプリケーション起動
-uvicorn app.main:app --reload
-
-# ブラウザでアクセス
-# http://localhost:8000
-```
-
-### 4. Google Drive連携（オプション）
-
-1. [Google Cloud Console](https://console.cloud.google.com/)でOAuth 2.0クライアントIDを作成
-2. リダイレクトURIに `http://localhost:8000/api/auth/google/callback` を追加
-3. `.env`にクライアントIDとシークレットを設定
-4. WebUIから「Googleでログイン」をクリック
-
-### 5. ベクトルインデックス作成
-
-```bash
-# 全ドキュメントのベクトルインデックスを作成
-curl -X POST http://localhost:8000/api/vector/index
-```
-
-<!-- ## 📄 ライセンス
-
-研究・教育目的での利用を前提としています。 -->
