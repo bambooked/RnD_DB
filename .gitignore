@@ -4,28 +4,27 @@ __pycache__/
 build/
 dist/
 wheels/
-data/
-!sample_data/
-credentials/
-vector_db/
-database/
 *.egg-info
 
-# Virtual environments
+# environments
 .venv
 .env
 .coverage
-
-
+.DS_store
 
 # claude
 CLAUDE.md
 claude.md
 
 # Google Drive認証情報（機密情報）
+credentials/
 google_drive_credentials.json
 google_drive_credentials_token.json
 
+# データたち
+vector_db/
+database/
+data/
+chroma_db/
+!sample_data/
 
-*.json
-.DS_store
