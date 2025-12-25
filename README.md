@@ -10,20 +10,7 @@
 
 ---
 
-## 📖 なぜこのシステムを作ったのか
-
-研究活動において、論文、データセット、ポスターなどの研究成果物は日々増え続けます。しかし、これらのデータは散在しがちで、以下のような課題がありました：
-
-- **データの所在が分からない**: 「あのデータセット、どこに保存したっけ？」
-- **関連性の把握が困難**: 「この論文に使われているデータセットはどれ？」
-- **検索の非効率性**: ファイル名だけでは内容を理解できない
-- **研究相談の不在**: 深夜や休日に研究の方向性を相談できる相手がいない
-
-このシステムは、これらの課題を**Google Drive連携**と**AI技術（RAG + LLM）**で解決し、研究者が本来の研究に集中できる環境を提供します。
-
----
-
-## 🎯 システム概要
+## システム概要
 
 このシステムは3つの核心機能で研究活動を支援します：
 
@@ -38,7 +25,7 @@ Google Driveに保存された研究データを自動的に同期・解析し�
 
 ---
 
-## 🖼️ 動作イメージ
+## 動作イメージ
 
 ### ダッシュボード
 <div align="center">
@@ -56,7 +43,20 @@ Google Driveに保存された研究データを自動的に同期・解析し�
 
 ---
 
-## 🛠️ 技術スタック
+## なぜこのシステムを作ったのか
+
+研究活動において、論文、データセット、ポスターなどの研究成果物は日々増え続けます。しかし、これらのデータは散在しがちで、以下のような課題がありました：
+
+- **データの所在が分からない**: 「あのデータセット、どこに保存したっけ？」
+- **関連性の把握が困難**: 「この論文に使われているデータセットはどれ？」
+- **検索の非効率性**: ファイル名だけでは内容を理解できない
+- **研究相談の不在**: 深夜や休日に研究の方向性を相談できる相手がいない
+
+このシステムは、これらの課題を**Google Drive連携**と**AI技術（RAG + LLM）**で解決し、研究者が本来の研究に集中できる環境を提供します。
+
+---
+
+## 技術スタック
 
 ### バックエンド
 
@@ -97,31 +97,32 @@ Google Driveに保存された研究データを自動的に同期・解析し�
 
 ### システムアーキテクチャ
 
-```
-┌─────────────┐
-│   Web UI    │ (FastAPI + Jinja2)
-└──────┬──────┘
-       │
-┌──────▼──────────────────────────────────┐
-│        Core Application Layer            │
-│  ┌──────────┐  ┌──────────┐  ┌────────┐ │
-│  │ Indexer  │  │ Analyzer │  │ Advisor│ │
-│  └──────────┘  └──────────┘  └────────┘ │
-└──────┬──────────────┬───────────────────┘
-       │              │
-┌──────▼──────┐  ┌───▼──────────┐
-│   Database  │  │ Vector Store │
-│  (SQLite/   │  │  (ChromaDB)  │
-│ PostgreSQL) │  │              │
-└─────────────┘  └──────────────┘
-       │
-┌──────▼──────────────┐
-│  External Services  │
-│ ┌─────────────────┐ │
-│ │ Google Drive    │ │
-│ │ OpenRouter API  │ │
-│ └─────────────────┘ │
-└─────────────────────┘
+```mermaid
+graph TB
+    WebUI["Web UI<br/>(FastAPI + Jinja2)"]
+
+    subgraph CoreLayer["Core Application Layer"]
+        Indexer["Indexer"]
+        Analyzer["Analyzer"]
+        Advisor["Advisor"]
+    end
+
+    Database["Database<br/>(SQLite/PostgreSQL)"]
+    VectorStore["Vector Store<br/>(ChromaDB)"]
+
+    subgraph ExternalServices["External Services"]
+        GoogleDrive["Google Drive"]
+        OpenRouter["OpenRouter API"]
+    end
+
+    WebUI --> CoreLayer
+    CoreLayer --> Database
+    CoreLayer --> VectorStore
+    Database --> ExternalServices
+
+    style WebUI fill:#e1f5ff
+    style CoreLayer fill:#fff4e6
+    style ExternalServices fill:#f3e5f5
 ```
 
 ### ディレクトリ構造
@@ -240,27 +241,23 @@ FastAPIの非同期機能を活用し、Google Drive同期やLLM API呼び出し
 
 #### セマンティック検索の仕組み
 
-```
-┌──────────────────┐
-│  ユーザークエリ   │ "機械学習のデータセット"
-└────────┬─────────┘
-         │
-         ▼
-┌────────────────────────┐
-│ Embedding Model        │ sentence-transformers/all-MiniLM-L6-v2
-│ (384次元ベクトル化)     │
-└────────┬───────────────┘
-         │
-         ▼
-┌────────────────────────┐
-│ ChromaDB              │
-│ コサイン類似度計算     │
-└────────┬───────────────┘
-         │
-         ▼
-┌────────────────────────┐
-│ 関連文書Top-K取得      │ 類似度スコア付き
-└────────────────────────┘
+```mermaid
+graph TD
+    classDef default color:#000;
+
+    Query["ユーザークエリ<br/>「機械学習のデータセット」"]
+    Embedding["Embedding Model<br/>sentence-transformers/all-MiniLM-L6-v2<br/>(384次元ベクトル化)"]
+    ChromaDB["ChromaDB<br/>コサイン類似度計算"]
+    Results["関連文書Top-K取得<br/>類似度スコア付き"]
+
+    Query --> Embedding
+    Embedding --> ChromaDB
+    ChromaDB --> Results
+
+    style Query fill:#e3f2fd
+    style Embedding fill:#fff3e0
+    style ChromaDB fill:#f3e5f5
+    style Results fill:#e8f5e9
 ```
 
 #### ハイブリッド検索
@@ -269,6 +266,31 @@ FastAPIの非同期機能を活用し、Google Drive同期やLLM API呼び出し
 ### 3. AI研究相談（RAG + LLM）
 
 #### RAGパイプライン
+
+```mermaid
+graph TB
+
+  direction LR
+  Query["ユーザークエリ"]
+  VectorSearch["ベクトル検索<br/>関連文書Top-K取得"]
+  Context["コンテキスト構築<br/>研究データ統合"]
+
+  direction LR
+  Prompt["プロンプト生成<br/>システム指示+研究データ+質問"]
+  LLM["LLM呼び出し<br/>OpenRouter API<br/>(Claude/GPT-4/Gemini)"]
+  Response["回答生成"]
+
+Query --> VectorSearch --> Context --> Prompt --> LLM --> Response
+
+style Query fill:#e3f2fd,color:#000
+style VectorSearch fill:#f3e5f5,color:#000
+style Context fill:#fff3e0,color:#000
+style Prompt fill:#fce4ec,color:#000
+style LLM fill:#e8f5e9,color:#000
+style Response fill:#e1f5fe,color:#000
+```
+
+**実装コード例：**
 
 ```python
 def research_consultation(query: str) -> str:
@@ -372,257 +394,6 @@ uvicorn app.main:app --reload
 curl -X POST http://localhost:8000/api/vector/index
 ```
 
----
+<!-- ## 📄 ライセンス
 
-## 🔧 開発環境
-
-### APIサーバー起動
-
-```bash
-# 開発用APIサーバー（認証なし）
-uv run python services/api/paas_api.py
-
-# 本番用APIサーバー（認証あり）
-uv run python services/api/paas_api_with_auth.py
-```
-
-### テスト実行
-
-```bash
-# 全テスト実行
-uv run pytest agent/tests/ -v
-
-# カバレッジ付き
-uv run pytest agent/tests/ --cov=agent/source --cov-report=html
-```
-
-### コード品質チェック
-
-```bash
-# リンター
-uv run ruff check agent/
-
-# フォーマット
-uv run ruff format agent/
-
-# 型チェック
-uv run mypy agent/
-```
-
----
-
-## 📊 データベース構造
-
-### 主要テーブル
-
-#### datasets（データセット）
-```sql
-CREATE TABLE datasets (
-    id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,
-    description TEXT,
-    file_count INTEGER DEFAULT 0,
-    total_size INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
-    summary TEXT,
-    drive_folder_id TEXT,
-    drive_url TEXT
-);
-```
-
-#### papers（論文）
-```sql
-CREATE TABLE papers (
-    id INTEGER PRIMARY KEY,
-    file_path TEXT UNIQUE NOT NULL,
-    file_name TEXT NOT NULL,
-    file_size INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
-    indexed_at TIMESTAMP,
-    title TEXT,
-    authors TEXT,
-    abstract TEXT,
-    keywords TEXT,
-    content_hash TEXT,
-    drive_file_id TEXT,
-    drive_url TEXT
-);
-```
-
-#### dataset_files（データセット内ファイル）
-```sql
-CREATE TABLE dataset_files (
-    id INTEGER PRIMARY KEY,
-    dataset_id INTEGER NOT NULL,
-    file_path TEXT UNIQUE NOT NULL,
-    file_name TEXT NOT NULL,
-    file_type TEXT,
-    file_size INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
-    indexed_at TIMESTAMP,
-    content_hash TEXT,
-    schema_info TEXT,
-    summary TEXT,
-    drive_file_id TEXT,
-    drive_url TEXT,
-    FOREIGN KEY (dataset_id) REFERENCES datasets(id)
-);
-```
-
-#### openrouter_models（LLMモデル情報）
-```sql
-CREATE TABLE openrouter_models (
-    id INTEGER PRIMARY KEY,
-    model_id TEXT UNIQUE NOT NULL,
-    model_name TEXT NOT NULL,
-    description TEXT,
-    context_length INTEGER,
-    pricing_prompt REAL,
-    pricing_completion REAL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
-    top_provider TEXT,
-    architecture TEXT,
-    modality TEXT,
-    visible BOOLEAN DEFAULT 1
-);
-```
-
----
-
-## 🌐 API エンドポイント
-
-### Web UI API
-
-#### Google Drive同期
-- `POST /api/sync/google-drive` - Google Drive同期開始
-- `GET /api/google-drive/status` - 同期状態確認
-- `GET /api/drive/folders` - フォルダ一覧取得
-
-#### 検索・相談
-- `POST /api/search` - 研究データ検索（ハイブリッド）
-- `POST /api/consultation` - AI研究相談（RAG対応）
-- `POST /api/vector/search` - セマンティック検索
-
-#### データベース情報
-- `GET /api/database/summary` - データベース詳細要約
-- `GET /api/datasets/{dataset_id}` - データセット詳細取得
-- `GET /api/datasets/{dataset_id}/files` - ファイル一覧
-
-#### OpenRouterモデル管理
-- `GET /api/models` - モデル一覧取得
-- `POST /api/models/sync` - モデル一覧手動同期
-
-### PaaS API
-
-開発用（認証なし）と本番用（認証あり）の2つのAPIサーバーを提供：
-
-- `GET /health` - ヘルスチェック
-- `POST /documents/ingest` - 文書取り込み
-- `GET /documents/search` - 文書検索
-- `GET /documents/{category}/{document_id}` - 文書詳細取得
-- `GET /statistics` - システム統計情報
-
----
-
-## 🎓 技術的な実装ポイント
-
-### 1. 循環インポート回避
-Analyzerは遅延インポートすることで、IndexerとAnalyzerの循環依存を回避。
-
-```python
-# agent/source/indexer/new_indexer.py
-def analyze_if_needed(self, category: str):
-    # 遅延インポートで循環参照を回避
-    from agent.source.analyzer.new_analyzer import NewFileAnalyzer
-    analyzer = NewFileAnalyzer()
-    analyzer.analyze_unanalyzed_files(category)
-```
-
-### 2. リポジトリパターン
-データアクセスロジックをリポジトリクラスに集約し、ビジネスロジックから分離。
-
-```python
-# agent/source/database/new_repository.py
-class PaperRepository:
-    def find_all(self) -> List[Paper]:
-        pass
-
-    def find_by_id(self, paper_id: int) -> Optional[Paper]:
-        pass
-
-    def save(self, paper: Paper) -> Paper:
-        pass
-```
-
-### 3. FastAPIバックグラウンドタスク
-長時間処理をバックグラウンドで実行し、UIのレスポンスを保つ。
-
-```python
-from fastapi import BackgroundTasks
-
-@app.post("/api/sync/google-drive")
-async def sync_google_drive(background_tasks: BackgroundTasks):
-    background_tasks.add_task(execute_sync)
-    return {"status": "started"}
-```
-
-### 4. OpenRouterモデル自動同期
-アプリケーション起動時にバックグラウンドタスクとして24時間ごとに実行。
-
-```python
-@app.on_event("startup")
-async def startup_event():
-    background_tasks.add_task(sync_openrouter_models_periodically)
-```
-
----
-
-## 📚 設定オプション
-
-### 基本設定
-- `DATABASE_PATH`: SQLiteデータベースパス（開発環境）
-- `DATABASE_URL`: PostgreSQL接続URL（本番環境）
-- `DATA_DIR_PATH`: ローカルデータディレクトリ
-
-### LLM API設定
-- `OPENROUTER_API_KEY`: OpenRouter APIキー（必須）
-- `OPENROUTER_MODEL`: 使用するモデル（デフォルト: `openrouter/anthropic/claude-3.5-sonnet`）
-- `GEMINI_API_KEY`: Google Gemini APIキー（レガシー）
-
-### ベクトル検索設定
-- `ENABLE_VECTOR_SEARCH`: ベクトル検索有効化（`true`/`false`）
-- `VECTOR_DB_PROVIDER`: プロバイダー（`chroma`）
-- `VECTOR_EMBEDDING_MODEL`: 埋め込みモデル（`sentence-transformers/all-MiniLM-L6-v2`）
-
-### Google Drive連携設定
-- `GOOGLE_DRIVE_CREDENTIALS_PATH`: 認証情報ファイルパス
-- `GOOGLE_DRIVE_FOLDER_IDS`: 同期対象フォルダID（JSON配列）
-- `GOOGLE_DRIVE_MAX_FILE_SIZE_MB`: 最大ファイルサイズ（デフォルト: `100`MB）
-
-### 認証設定
-- `AUTH_ENABLED`: 認証機能有効化（`true`/`false`）
-- `GOOGLE_OAUTH_CLIENT_ID`: OAuth 2.0クライアントID
-- `GOOGLE_OAUTH_CLIENT_SECRET`: OAuth 2.0クライアントシークレット
-- `ALLOWED_DOMAINS`: 許可ドメイン（カンマ区切り）
-
-詳細な設定オプションは[CLAUDE.md](CLAUDE.md)を参照してください。
-
----
-
-## 🤝 貢献
-
-プルリクエストやイシューの報告を歓迎します。
-
-## 📄 ライセンス
-
-研究・教育目的での利用を前提としています。
-
----
-
-<div align="center">
-  <strong>AIとクラウドで、研究データ管理を次のレベルへ</strong>
-</div>
+研究・教育目的での利用を前提としています。 -->
